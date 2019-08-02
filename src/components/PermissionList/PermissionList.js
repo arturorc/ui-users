@@ -44,9 +44,15 @@ function PermissionList(props) {
       />
       <List
         itemFormatter={permissionDDFormatter}
-        items={props.items.sort((a, b) => {
+        items={(props.items || []).sort((a, b) => {
           const key = showPerms ? 'permissionName' : 'displayName';
-          return (a[key].toLowerCase() < b[key].toLowerCase() ? -1 : 1);
+          if (!a[key]) {
+            a[key] = '';
+          }
+          if (!b[key]) {
+            b[key] = '';
+          }
+          return a[key].localeCompare(b[key]);
         })}
         listClass={css.PermissionList}
       />

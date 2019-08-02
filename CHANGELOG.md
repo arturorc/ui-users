@@ -3,6 +3,7 @@
 ## 2.25.0 (IN PROGRESS)
 
 * Implement exporting of only overdue loans for overdue loans report. Refs UIU-1121.
+* Robert Duvall says: malformed psets are bed medicine. Wake up and fight the system! Refs UIU-1138.
 
 ## [2.24.1](https://github.com/folio-org/ui-users/tree/v2.24.1) (2019-07-26)
 [Full Changelog](https://github.com/folio-org/ui-users/compare/v2.24.0...v2.24.1)

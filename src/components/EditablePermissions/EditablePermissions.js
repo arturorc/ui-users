@@ -89,8 +89,14 @@ class EditablePermissions extends React.Component {
 
     if (!perm.visible && !this.props.stripes.config.listInvisiblePerms) { return false; }
 
-    return includes(perm.displayName.toLowerCase() || perm.permissionName.toLowerCase(),
-      this.state.searchTerm.toLowerCase());
+    let pname = '';
+    if (perm.displayName) {
+      pname = perm.displayName.toLowerCase();
+    } else if (perm.permissionName) {
+      pname = perm.permissionName.toLowerCase();
+    }
+
+    return includes(pname, this.state.searchTerm.toLowerCase());
   }
 
   removePermission(index) {

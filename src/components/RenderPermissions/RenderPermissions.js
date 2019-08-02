@@ -47,7 +47,13 @@ class RenderPermissions extends React.Component {
       <List
         items={(listedPermissions || []).sort((a, b) => {
           const key = showPerms ? 'permissionName' : 'displayName';
-          return (a[key].toLowerCase() < b[key].toLowerCase() ? -1 : 1);
+          if (!a[key]) {
+            a[key] = '';
+          }
+          if (!b[key]) {
+            b[key] = '';
+          }
+          return a[key].localeCompare(b[key]);
         })}
         itemFormatter={listFormatter}
         isEmptyMessage={noPermissionsFound}
