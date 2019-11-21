@@ -670,8 +670,9 @@
     "@bigtest/mocha": "^0.5.2",
     "@bigtest/react": "^0.1.2",
     "@folio/eslint-config-stripes": "^3.2.1",
-    "@folio/stripes": "~2.8.0",
-    "@folio/stripes-components": "~5.5.0",
+    "@folio/stripes": "~2.12.0",
+    "@folio/stripes-components": "~5.9.0",
+    "@folio/stripes-core": "~3.11.0",
     "babel-eslint": "^9.0.0",
     "babel-polyfill": "^6.26.0",
     "chai": "^4.2.0",
@@ -699,12 +700,15 @@
     "uuid": "^3.0.1"
   },
   "peerDependencies": {
-    "@folio/stripes": "~2.8.0",
+    "@folio/stripes": "~2.12.0",
     "react": "*",
     "react-router": "*",
     "react-router-dom": "*"
   },
   "optionalDependencies": {
     "@folio/plugin-find-user": "^1.1.0"
+  },
+  "resolutions": {
+    "@folio/stripes-core": "git://github.com/folio-org/stripes-core.git#5014a253fcb581c790573d76ca15828f7fa4e835"
   }
 }
