@@ -1,6 +1,6 @@
 // This view component contains purely presentational code.
 
-import React from 'react';
+import React, { createRef } from 'react';
 import PropTypes from 'prop-types';
 import { matchPath } from 'react-router';
 
@@ -8,26 +8,27 @@ import noop from 'lodash/noop';
 import get from 'lodash/get';
 import { Link } from 'react-router-dom';
 import { FormattedMessage, injectIntl } from 'react-intl';
-import { IntlConsumer, IfPermission, AppIcon } from '@folio/stripes/core';
+import { IntlConsumer, IfPermission, AppIcon, CalloutContext } from '@folio/stripes/core';
 import {
-  MultiColumnList,
-  SearchField,
-  Paneset,
-  Pane,
-  Icon,
   Button,
-  PaneMenu,
   HasCommand,
+  Icon,
+  MultiColumnList,
+  Pane,
+  PaneMenu,
+  Paneset,
+  SearchField,
+  SRStatus,
 } from '@folio/stripes/components';
 
 import {
   SearchAndSortQuery,
   SearchAndSortNoResultsMessage as NoResultsMessage,
-  SearchAndSortSearchButton as FilterPaneToggle,
+  ExpandFilterPaneButton,
+  CollapseFilterPaneButton,
 } from '@folio/stripes/smart-components';
 
 import OverdueLoanReport from '../../components/data/reports';
-import pkg from '../../../package';
 import Filters from './Filters';
 import css from './UserSearch.css';
 
@@ -60,6 +61,9 @@ class UserSearch extends React.Component {
     }).isRequired,
     mutator: PropTypes.shape({
       loans: PropTypes.object,
+      resultOffset: PropTypes.shape({
+        replace: PropTypes.func.isRequired,
+      }),
     }).isRequired,
     source: PropTypes.object,
     visibleColumns: PropTypes.arrayOf(PropTypes.string),
@@ -67,8 +71,10 @@ class UserSearch extends React.Component {
 
   static defaultProps = {
     idPrefix: 'users-',
-    visibleColumns: ['status', 'name', 'barcode', 'patronGroup', 'username', 'email'],
+    visibleColumns: ['active', 'name', 'barcode', 'patronGroup', 'username', 'email'],
   };
+
+  static contextType = CalloutContext;
 
   constructor(props) {
     super(props);
@@ -76,9 +82,11 @@ class UserSearch extends React.Component {
       filterPaneIsVisible: true,
       selectedId: null,
       exportInProgress: false,
+      searchPending: false,
     };
 
-    this.searchField = React.createRef();
+    this.resultsPaneTitleRef = createRef();
+    this.SRStatusRef = createRef();
 
     const { formatMessage } = props.intl;
     this.overdueLoanReport = new OverdueLoanReport({
@@ -94,13 +102,41 @@ class UserSearch extends React.Component {
   }
 
   componentDidMount() {
-    this.possiblyfocusSearchField();
+    this._mounted = true;
   }
 
-  possiblyfocusSearchField = () => {
-    const { search, pathname } = window.location;
-    if ((pathname + search) === pkg.stripes.home && this.searchField.current) {
-      this.searchField.current.focus();
+  componentDidUpdate(prevProps) {
+    if (
+      this.state.searchPending &&
+      prevProps.resources.records &&
+      prevProps.resources.records.isPending &&
+      !this.props.resources.records.isPending) {
+      this.onSearchComplete(this.props.resources.records);
+    }
+  }
+
+  componentWillUnmount() {
+    this._mounted = false;
+  }
+
+  onSearchComplete = records => {
+    const { intl } = this.props;
+    const headerEl = this.resultsPaneTitleRef.current;
+    const resultsCount = get(records, 'other.totalRecords', 0);
+    const hasResults = !!resultsCount;
+
+    this.setState({ searchPending: false });
+
+    // Announce the results for screen readers
+    this.SRStatusRef.current.sendMessage(intl.formatMessage({
+      id: 'ui-users.resultCount',
+    }, {
+      count: resultsCount
+    }));
+
+    // Focus the pane header if we have results to minimize tabbing distance
+    if (hasResults && headerEl) {
+      headerEl.focus();
     }
   }
 
@@ -111,64 +147,67 @@ class UserSearch extends React.Component {
   }
 
   generateOverdueLoanReport = props => {
-    const {
-      reset,
-      GET,
-    } = props.mutator.loans;
     const { exportInProgress } = this.state;
 
     if (exportInProgress) {
       return;
     }
 
-    this.setState({ exportInProgress: true }, () => {
-      reset();
-      GET()
-        .then(loans => this.overdueLoanReport.toCSV(loans))
-        .then(() => this.setState({ exportInProgress: false }));
+    this.setState({ exportInProgress: true }, async () => {
+      this.context.sendCallout({ message: <FormattedMessage id="ui-users.reports.overdue.inProgress" /> });
+      await this.overdueLoanReport.generate(props.mutator.loans);
+      if (this._mounted) {
+        this.setState({ exportInProgress: false });
+      }
     });
   }
 
   getActionMenu = ({ onToggle }) => (
-    <Button
-      buttonStyle="dropdownItem"
-      id="export-overdue-loan-report"
-      onClick={() => {
-        onToggle();
-        this.generateOverdueLoanReport(this.props);
-      }}
-    >
-      <FormattedMessage id="ui-users.reports.overdue.label" />
-    </Button>
+    <>
+      <IfPermission perm="users.item.post,login.item.post,perms.users.item.post">
+        <PaneMenu>
+          <FormattedMessage id="stripes-smart-components.addNew">
+            {ariaLabel => (
+              <Button
+                id="clickable-newuser"
+                aria-label={ariaLabel}
+                to={`/users/create${this.props.location.search}`}
+                buttonStyle="dropdownItem"
+                marginBottom0
+              >
+                <FormattedMessage id="stripes-smart-components.new" />
+              </Button>
+            )}
+          </FormattedMessage>
+        </PaneMenu>
+      </IfPermission>
+      <Button
+        buttonStyle="dropdownItem"
+        id="export-overdue-loan-report"
+        onClick={() => {
+          onToggle();
+          this.generateOverdueLoanReport(this.props);
+        }}
+      >
+        <FormattedMessage id="ui-users.reports.overdue.label" />
+      </Button>
+    </>
   );
 
   renderResultsFirstMenu(filters) {
     const { filterPaneIsVisible } = this.state;
-
     const filterCount = filters.string !== '' ? filters.string.split(',').length : 0;
-    const hideOrShowMessageId = filterPaneIsVisible
-      ? 'stripes-smart-components.hideSearchPane'
-      : 'stripes-smart-components.showSearchPane';
+
+    if (filterPaneIsVisible) {
+      return null;
+    }
 
     return (
       <PaneMenu>
-        <FormattedMessage
-          id="stripes-smart-components.numberOfFilters"
-          values={{ count: filterCount }}
-        >
-          {appliedFiltersMessage => (
-            <FormattedMessage id={hideOrShowMessageId}>
-              {hideOrShowMessage => (
-                <FilterPaneToggle
-                  visible={filterPaneIsVisible}
-                  aria-label={`${hideOrShowMessage} \n\n${appliedFiltersMessage}`}
-                  onClick={this.toggleFilterPane}
-                  badge={!filterPaneIsVisible && filterCount ? filterCount : undefined}
-                />
-              )}
-            </FormattedMessage>
-          )}
-        </FormattedMessage>
+        <ExpandFilterPaneButton
+          filterCount={filterCount}
+          onClick={this.toggleFilterPane}
+        />
       </PaneMenu>
     );
   }
@@ -209,28 +248,6 @@ class UserSearch extends React.Component {
     );
   };
 
-  renderNewRecordBtn() {
-    return (
-      <IfPermission perm="users.item.post,login.item.post,perms.users.item.post">
-        <PaneMenu>
-          <FormattedMessage id="stripes-smart-components.addNew">
-            {ariaLabel => (
-              <Button
-                id="clickable-newuser"
-                aria-label={ariaLabel}
-                to="/users/create"
-                buttonStyle="primary"
-                marginBottom0
-              >
-                <FormattedMessage id="stripes-smart-components.new" />
-              </Button>
-            )}
-          </FormattedMessage>
-        </PaneMenu>
-      </IfPermission>
-    );
-  }
-
   rowUpdater = (rowData) => {
     const { resources: { patronGroups } } = this.props;
     const groupObj = patronGroups ? patronGroups.records.filter(g => g.id === rowData.patronGroup)[0] : null;
@@ -251,9 +268,16 @@ class UserSearch extends React.Component {
 
   isSelected = ({ item }) => item.id === this.state.selectedId;
 
+  handleSubmit = (e, onSubmit) => {
+    this.setState({
+      searchPending: true,
+    });
+
+    onSubmit(e);
+  }
+
   render() {
     const {
-      filterConfig,
       onComponentWillUnmount,
       idPrefix,
       visibleColumns,
@@ -264,6 +288,7 @@ class UserSearch extends React.Component {
       onNeedMoreData,
       resources,
       contentRef,
+      mutator: { resultOffset },
     } = this.props;
 
     const users = get(resources, 'records.records', []);
@@ -281,14 +306,13 @@ class UserSearch extends React.Component {
         />
       </div>) : 'no source yet';
 
-    const resultsHeader = 'User Search Results';
     let resultPaneSub = <FormattedMessage id="stripes-smart-components.searchCriteria" />;
     if (source && source.loaded()) {
       resultPaneSub = <FormattedMessage id="stripes-smart-components.searchResultsCountHeader" values={{ count }} />;
     }
 
     const resultsFormatter = {
-      status: user => (
+      active: user => (
         <AppIcon app="users" size="small" className={user.active ? undefined : css.inactiveAppIcon}>
           {user.active ? <FormattedMessage id="ui-users.active" /> : <FormattedMessage id="ui-users.inactive" />}
         </AppIcon>
@@ -330,20 +354,40 @@ class UserSearch extends React.Component {
                     {intl => (
                       <Paneset id={`${idPrefix}-paneset`}>
                         {this.state.filterPaneIsVisible &&
-                          <Pane defaultWidth="22%" paneTitle="User search">
-                            <form onSubmit={onSubmitSearch}>
+                          <Pane
+                            defaultWidth="22%"
+                            paneTitle={<FormattedMessage id="ui-users.userSearch" />}
+                            lastMenu={
+                              <PaneMenu>
+                                <CollapseFilterPaneButton onClick={this.toggleFilterPane} />
+                              </PaneMenu>
+                            }
+                          >
+                            <form onSubmit={e => this.handleSubmit(e, onSubmitSearch)}>
+                              <SRStatus ref={this.SRStatusRef} />
                               <div className={css.searchGroupWrap}>
-                                <SearchField
-                                  aria-label="user search"
-                                  name="query"
-                                  id="input-user-search"
-                                  className={css.searchField}
-                                  onChange={getSearchHandlers().query}
-                                  value={searchValue.query}
-                                  marginBottom0
-                                  inputRef={this.searchField}
-                                  data-test-user-search-input
-                                />
+                                <FormattedMessage id="ui-users.userSearch">
+                                  {label => (
+                                    <SearchField
+                                      aria-label={label}
+                                      autoFocus
+                                      autoComplete="off"
+                                      name="query"
+                                      id="input-user-search"
+                                      className={css.searchField}
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          getSearchHandlers().query(e);
+                                        } else {
+                                          getSearchHandlers().reset();
+                                        }
+                                      }}
+                                      value={searchValue.query}
+                                      marginBottom0
+                                      data-test-user-search-input
+                                    />
+                                  )}
+                                </FormattedMessage>
                                 <Button
                                   id="submit-user-search"
                                   type="submit"
@@ -370,17 +414,19 @@ class UserSearch extends React.Component {
                                 </Button>
                               </div>
                               <Filters
+                                activeFilters={activeFilters.state}
+                                resources={resources}
                                 onChangeHandlers={getFilterHandlers()}
-                                activeFilters={activeFilters}
-                                config={filterConfig}
+                                resultOffset={resultOffset}
                               />
                             </form>
                           </Pane>
                         }
                         <Pane
+                          id="users-search-results-pane"
                           firstMenu={this.renderResultsFirstMenu(activeFilters)}
-                          lastMenu={this.renderNewRecordBtn()}
-                          paneTitle={resultsHeader}
+                          paneTitleRef={this.resultsPaneTitleRef}
+                          paneTitle={<FormattedMessage id="ui-users.userSearchResults" />}
                           paneSub={resultPaneSub}
                           defaultWidth="fill"
                           actionMenu={this.getActionMenu}
@@ -394,7 +440,7 @@ class UserSearch extends React.Component {
                             contentData={users}
                             totalCount={count}
                             columnMapping={{
-                              status: intl.formatMessage({ id: 'ui-users.active' }),
+                              active: intl.formatMessage({ id: 'ui-users.active' }),
                               name: intl.formatMessage({ id: 'ui-users.information.name' }),
                               barcode: intl.formatMessage({ id: 'ui-users.information.barcode' }),
                               patronGroup: intl.formatMessage({ id: 'ui-users.information.patronGroup' }),
@@ -411,6 +457,9 @@ class UserSearch extends React.Component {
                             isSelected={this.isSelected}
                             autosize
                             virtualize
+                            hasMargin
+                            pageAmount={100}
+                            pagingType="click"
                           />
 
                         </Pane>

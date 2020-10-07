@@ -14,6 +14,7 @@ import {
 class OpenLoans extends React.Component {
   static propTypes = {
     history: PropTypes.object.isRequired,
+    location: PropTypes.object.isRequired,
     isLoanChecked: PropTypes.func.isRequired,
     match: PropTypes.object.isRequired,
     loans: PropTypes.arrayOf(PropTypes.object).isRequired,
@@ -38,20 +39,20 @@ class OpenLoans extends React.Component {
     };
 
     this.columnWidths = {
-      '  ': 35,
-      'title': 150,
-      'itemStatus': 100,
-      'dueDate': 140,
-      'requests': 90,
-      'barcode': 130,
-      'Fee/Fine': 100,
-      'Call number': 120,
-      'Contributors': 160,
-      'renewals': 70,
-      'loanPolicy': 100,
-      'location': 100,
-      'loanDate': 100,
-      ' ': 50
+      '  ': { max: 35 },
+      'title': { max: 150 },
+      'itemStatus': { max: 100 },
+      'dueDate': { max: 140 },
+      'requests': { max: 90 },
+      'barcode': { max: 135 },
+      'Fee/Fine': { max: 100 },
+      'callNumber': { max: 120 },
+      'Contributors': { max: 160 },
+      'renewals': { max: 70 },
+      'loanPolicy': { max: 100 },
+      'location': { max: 100 },
+      'loanDate': { max: 100 },
+      ' ': { max: 50 }
     };
     this.columnOverflow = { ' ': true };
     this.permissions = { allRequests: 'ui-users.requests.all' };
@@ -76,9 +77,15 @@ class OpenLoans extends React.Component {
 
   onRowClick = (e, row) => {
     e.stopPropagation();
+
     if (e.target.type !== 'button') {
-      const { history, match: { params } } = this.props;
-      nav.onClickViewLoanActionsHistory(e, row, history, params);
+      const {
+        history,
+        match: { params },
+        location
+      } = this.props;
+
+      nav.onClickViewLoanActionsHistory(e, row, history, params, location.state);
     }
   };
 

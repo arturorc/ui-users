@@ -15,19 +15,6 @@ export function getFullName(user) {
   return `${lastName}${firstName ? ', ' : ' '}${firstName}${middleName ? ' ' : ''}${middleName}`;
 }
 
-export function getRowURL(user) {
-  return `/users/view/${user.id}`;
-}
-
-export function isSubstringsInString(listSubStrings, testString) {
-  return new RegExp(listSubStrings.join('|')).test(testString);
-}
-
-export function eachPromise(arr, fn) {
-  if (!Array.isArray(arr)) return Promise.reject(new Error('Array not found'));
-  return arr.reduce((prev, cur) => (prev.then(() => fn(cur))), Promise.resolve());
-}
-
 export function validate(item, index, items, field, label) {
   const error = {};
   for (let i = 0; i < items.length; i++) {
@@ -90,10 +77,14 @@ export function getOpenRequestStatusesFilterString() {
   return getFilterStatusesString(openStatusesArr);
 }
 
-export function getOpenRequestsPath(barcode) {
+export function getOpenRequestsPath(itemId) {
   const filterString = getOpenRequestStatusesFilterString();
 
-  return `/requests?filters=${filterString}&query=${barcode}&sort=Request Date`;
+  return `/requests?filters=${filterString}&query=${itemId}&sort=Request Date`;
+}
+
+export function getChargeFineToLoanPath(userId, loanId) {
+  return `/users/${userId}/charge/${loanId}`;
 }
 
 export function calculateSortParams({
@@ -116,3 +107,14 @@ export function calculateSortParams({
 
   return sortParams;
 }
+
+// Return true if every item in loans has the status itemStatus
+export function hasEveryLoanItemStatus(loans, itemStatus) {
+  return _.every(Object.values(loans), loan => loan?.item?.status?.name === itemStatus);
+}
+
+// Return true if every item in loans has one of the statuses in the itemStatuses array
+export function hasAnyLoanItemStatus(loans, itemStatuses) {
+  return _.every(Object.values(loans), loan => itemStatuses.includes(loan?.item?.status?.name));
+}
+

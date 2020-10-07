@@ -1,28 +1,22 @@
-import React, { Fragment } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 
 import {
-  Row,
-  Col,
+  Layout,
 } from '@folio/stripes/components';
 
 import withCopyModal from './WithCopyModal';
 
 const CreatePasswordModalBody = ({ email }) => {
   return (
-    <Fragment>
+    <>
       <FormattedMessage id="ui-users.extended.createPasswordModal.linkWasSent" />
-      <Row>
-        <Col
-          xs={12}
-          style={{ fontWeight: 'bold', padding: '10px' }}
-        >
-          {email}
-        </Col>
-      </Row>
+      <Layout class="padding-all-gutter">
+        <strong>{email}</strong>
+      </Layout>
       <FormattedMessage id="ui-users.extended.createPasswordModal.linkInstructions" />
-    </Fragment>
+    </>
   );
 };
 

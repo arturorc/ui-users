@@ -5,17 +5,17 @@ import {
   FormattedTime,
   FormattedMessage,
   injectIntl,
-  intlShape,
 } from 'react-intl';
 
 import {
   Icon,
   MultiColumnList,
 } from '@folio/stripes/components';
+import { effectiveCallNumber } from '@folio/stripes/util';
 
 class BulkOverrideLoansList extends Component {
   static propTypes = {
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     height: PropTypes.number,
     allChecked: PropTypes.bool.isRequired,
     loanPolicies: PropTypes.object.isRequired,
@@ -113,7 +113,7 @@ class BulkOverrideLoansList extends Component {
           currentDueDate:  formatMessage({ id: 'ui-users.loans.columns.dueDate' }),
           requestQueue:  formatMessage({ id: 'ui-users.loans.details.requests' }),
           barcode:  formatMessage({ id: 'ui-users.information.barcode' }),
-          callNumber:  formatMessage({ id: 'ui-users.loans.details.callNumber' }),
+          callNumber:  formatMessage({ id: 'ui-users.loans.details.effectiveCallNumber' }),
           renewals:  formatMessage({ id: 'ui-users.loans.columns.renewals' }),
           loanPolicy:  formatMessage({ id: 'ui-users.loans.details.loanPolicy' }),
         }}
@@ -158,7 +158,7 @@ class BulkOverrideLoansList extends Component {
           ),
           requestQueue: loan => requestCounts[loan.itemId] || 0,
           barcode: loan => get(loan, ['item', 'barcode']),
-          callNumber: loan => get(loan, ['item', 'callNumber'], '-'),
+          callNumber: loan => (<div data-test-bulk-override-call-numbers>{effectiveCallNumber(loan)}</div>),
           renewals: loan => get(loan, 'renewalCount', 0),
           loanPolicy: loan => loanPolicies[loan.loanPolicyId],
         }}

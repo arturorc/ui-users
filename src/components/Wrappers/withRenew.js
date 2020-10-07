@@ -1,4 +1,4 @@
-import React, { Fragment } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 import {
@@ -11,11 +11,14 @@ import SafeHTMLMessage from '@folio/react-intl-safe-html';
 
 import BulkRenewalDialog from '../BulkRenewalDialog';
 import isOverridePossible from '../Loans/OpenLoans/helpers/isOverridePossible';
+import { requestStatuses } from '../../constants';
+
 
 // HOC used to manage renew
 const withRenew = WrappedComponent => class WithRenewComponent extends React.Component {
   static propTypes = {
     loans: PropTypes.arrayOf(PropTypes.object),
+    patronBlocks: PropTypes.arrayOf(PropTypes.object),
     mutator: PropTypes.shape({
       loanPolicies: PropTypes.shape({
         GET: PropTypes.func.isRequired,
@@ -32,6 +35,7 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
     stripes: PropTypes.shape({
       connect: PropTypes.func.isRequired,
     }),
+    user: PropTypes.object,
   };
 
   static defaultProps = {
@@ -66,6 +70,7 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
   }
 
   componentDidMount() {
+    this._isMounted = true;
     const { loans } = this.state;
 
     if (loans.length > 0) {
@@ -83,7 +88,18 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
     }
   }
 
-  renewItem = (loan, patron, bulkRenewal) => {
+  componentWillUnmount() {
+    this._isMounted = false;
+  }
+
+  // fetchLoanPolicyNames and getOpenRequestsCount both execute XHRs that resolve
+  // asynchronously and save their results in state. This causes a memory leak if
+  // the component is unmounted before the promise resolves as state will not be
+  // available at that point. By setting _isMounted in cDM/cWU, we can use it in a
+  // condition in those methods to determine whether it is safe to update state.
+  _isMounted = false;
+
+  renewItem = (loan, patron, bulkRenewal, silent) => {
     this.setState({ bulkRenewal });
     const params = {
       itemBarcode: loan.item.barcode,
@@ -91,7 +107,7 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
     };
 
     return new Promise((resolve, reject) => {
-      this.props.mutator.renew.POST(params)
+      this.props.mutator.renew.POST(params, { silent })
         .then(resolve)
         .catch(resp => {
           const contentType = resp.headers.get('Content-Type');
@@ -117,17 +133,19 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
     const renewFailure = [];
     const errorMsg = {};
     const countRenew = patronBlocks.filter(p => p.renewals);
-    const bulkRenewal = (loans.length > 1);
+    const loansSize = loans.length;
+    const bulkRenewal = (loansSize > 1);
 
     if (!isEmpty(countRenew)) {
       return this.setState({ patronBlockedModal: true });
     }
 
-    const renewedLoans = await Promise.all(loans.map(async (loan) => {
+    for (const [index, loan] of loans.entries()) {
       try {
-        const renewedLoan = await this.renewItem(loan, patron, bulkRenewal);
-
-        renewSuccess.push(renewedLoan);
+        // We actually want to execute it in a sequence so turning off eslint warning
+        // https://issues.folio.org/browse/UIU-1299
+        // eslint-disable-next-line no-await-in-loop
+        renewSuccess.push(await this.renewItem(loan, patron, bulkRenewal, index !== loansSize - 1));
       } catch (error) {
         const stringErrorMessage = get(error, 'props.values.message', '');
 
@@ -137,12 +155,12 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
           ...isOverridePossible(stringErrorMessage),
         };
       }
-    }));
+    }
 
     if (isEmpty(renewFailure) && renewSuccess.length <= 1) {
       this.showSingleRenewCallout(renewSuccess[0]);
 
-      return renewedLoans;
+      return renewSuccess;
     }
 
     this.setState({
@@ -152,7 +170,7 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
       bulkRenewalDialogOpen: true
     });
 
-    return renewedLoans;
+    return renewSuccess;
   };
 
   showSingleRenewCallout = (loan) => {
@@ -232,10 +250,19 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
     // short-enough query string that we can avoid a "414 Request URI Too Long"
     // response from Okapi. Details at CHAL-30
     const step = 50;
+
+    const statusList = Object.values(requestStatuses)
+      .filter(s => s.startsWith('Open - '))
+      .map(s => `"${s}"`)
+      .join(' OR ');
+
     for (let i = 0; i < loans.length; i += step) {
       const loansSlice = loans.slice(i, i + step);
-      const q = loansSlice.map(loan => loan.itemId).join(' or ');
-      const query = `(itemId==(${q})) and status==("Open - Awaiting pickup" or "Open - Not yet filled") sortby requestDate desc`;
+      const q = loansSlice
+        .filter(loan => loan.itemId)
+        .map(loan => loan.itemId)
+        .join(' or ');
+      const query = `(itemId==(${q})) and status==(${statusList}) sortby requestDate desc`;
       reset();
       GET({ params: { query } })
         .then((requestRecords) => {
@@ -247,9 +274,11 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
             return map;
           }, {});
 
-          this.setState(prevState => ({
-            requestCounts: Object.assign({}, prevState.requestCounts, requestCountObject)
-          }));
+          if (this._isMounted) {
+            this.setState(prevState => ({
+              requestCounts: { ...prevState.requestCounts, ...requestCountObject }
+            }));
+          }
         });
     }
   };
@@ -261,7 +290,11 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
   fetchLoanPolicyNames = () => {
     // get a list of unique policy IDs to retrieve. multiple loans may share
     // the same policy; we only need to retrieve that policy once.
-    const query = `id==(${[...new Set(this.state.loans.map(loan => loan.loanPolicyId))].join(' or ')})`;
+    const ids = [...new Set(this.state.loans
+      .filter(loan => loan.loanPolicyId)
+      .map(loan => loan.loanPolicyId))]
+      .join(' or ');
+    const query = `id==(${ids})`;
     const {
       mutator: {
         loanPolicies: {
@@ -280,7 +313,9 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
           return map;
         }, {});
 
-        this.setState({ loanPolicies: loanPolicyObject });
+        if (this._isMounted) {
+          this.setState({ loanPolicies: loanPolicyObject });
+        }
       });
   };
 
@@ -299,7 +334,7 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
     } = this.props;
 
     return (
-      <Fragment>
+      <>
         <WrappedComponent
           renew={this.renew}
           requestCounts={requestCounts}
@@ -319,7 +354,7 @@ const withRenew = WrappedComponent => class WithRenewComponent extends React.Com
           onClose={this.hideBulkRenewalDialog}
         />
         <Callout ref={(ref) => { this.callout = ref; }} />
-      </Fragment>
+      </>
     );
   }
 };

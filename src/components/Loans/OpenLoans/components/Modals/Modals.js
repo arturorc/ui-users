@@ -4,8 +4,8 @@ import PropTypes from 'prop-types';
 import { ChangeDueDateDialog } from '@folio/stripes/smart-components';
 import { stripesShape } from '@folio/stripes/core';
 
-// eslint-disable-next-line
-import PatronBlockModal from '@folio/users/src/components/PatronBlock/PatronBlockModal';
+import PatronBlockModal from '../../../../PatronBlock/PatronBlockModal';
+import BulkClaimedReturnedModal from '../BulkClaimReturnedModal';
 
 class Modals extends React.Component {
   static propTypes = {
@@ -20,6 +20,9 @@ class Modals extends React.Component {
     hideChangeDueDateDialog: PropTypes.func.isRequired,
     changeDueDateDialogOpen: PropTypes.bool.isRequired,
     onClosePatronBlockedModal: PropTypes.func.isRequired,
+    requestCounts: PropTypes.object.isRequired,
+    onBulkClaimReturnedCancel: PropTypes.func.isRequired,
+    showBulkClaimReturnedModal: PropTypes.bool.isRequired,
   };
 
   static defaultProps = {
@@ -31,6 +34,7 @@ class Modals extends React.Component {
 
     const { stripes } = props;
     this.connectedChangeDueDateDialog = stripes.connect(ChangeDueDateDialog);
+    this.connectedBulkClaimReturnedDialog = stripes.connect(BulkClaimedReturnedModal);
   }
 
   render() {
@@ -46,15 +50,17 @@ class Modals extends React.Component {
       patronBlockedModal,
       onClosePatronBlockedModal,
       patronGroup,
+      requestCounts,
+      showBulkClaimReturnedModal,
+      onBulkClaimReturnedCancel,
     } = this.props;
 
     const loanIds = activeLoan
       ? loans.filter(loan => activeLoan === loan.id) // Only changing one due date.
       : loans.filter(loan => checkedLoans[loan.id]); // Bulk-changing due dates.
 
-
     return (
-      <React.Fragment>
+      <>
         {changeDueDateDialogOpen &&
           <this.connectedChangeDueDateDialog
             user={user}
@@ -70,7 +76,13 @@ class Modals extends React.Component {
           onClose={onClosePatronBlockedModal}
           viewUserPath={`/users/view/${(user || {}).id}?filters=pg.${patronGroup.group}&sort=name`}
         />
-      </React.Fragment>
+        <this.connectedBulkClaimReturnedDialog
+          checkedLoansIndex={checkedLoans}
+          requestCounts={requestCounts}
+          open={showBulkClaimReturnedModal}
+          onCancel={onBulkClaimReturnedCancel}
+        />
+      </>
     );
   }
 }

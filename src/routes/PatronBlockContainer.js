@@ -14,17 +14,11 @@ class PatronBlockContainer extends React.Component {
         return refresh || (path && path.match(/link/));
       },
     },
-    patronBlocks: {
+    manualPatronBlocks: {
       type: 'okapi',
       records: 'manualblocks',
       path:'manualblocks',
-      // TODO: the use of activerecord here is very confusing.
-      // it specifically correspoonds to a userId in the GET query but
-      // is set to an item's ID in onUpdateItem and onDeleteItem.
-      // that's not wrong, but it's not clear.
-      GET: {
-        path: 'manualblocks?query=userId==%{activeRecord.blockid-x}',
-      },
+      fetch: false,
       PUT: {
         path: 'manualblocks/%{activeRecord.blockid}',
       },
@@ -37,7 +31,7 @@ class PatronBlockContainer extends React.Component {
 
   static propTypes = {
     mutator: PropTypes.shape({
-      patronBlocks: PropTypes.shape({
+      manualPatronBlocks: PropTypes.shape({
         POST: PropTypes.func.isRequired,
         PUT: PropTypes.func.isRequired,
         DELETE: PropTypes.func.isRequired

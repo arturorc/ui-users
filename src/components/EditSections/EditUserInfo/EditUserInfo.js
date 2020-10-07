@@ -11,7 +11,7 @@ import {
   Col,
   Accordion,
   Datepicker,
-  Headline
+  Headline,
 } from '@folio/stripes/components';
 
 import css from './EditUserInfo.css';
@@ -35,7 +35,6 @@ class EditUserInfo extends React.Component {
       accordionId,
       intl,
     } = this.props;
-
 
     const isUserExpired = () => {
       const expirationDate = new Date(initialValues.expirationDate);
@@ -63,11 +62,11 @@ class EditUserInfo extends React.Component {
 
     const statusOptions = [
       {
-        value: 'true',
+        value: true,
         label: intl.formatMessage({ id: 'ui-users.active' })
       },
       {
-        value: 'false',
+        value: false,
         label: intl.formatMessage({ id: 'ui-users.inactive' })
       }
     ];
@@ -113,9 +112,9 @@ class EditUserInfo extends React.Component {
           </Col>
           <Col xs={12} md={3}>
             <Field
-              label={<FormattedMessage id="ui-users.information.barcode" />}
-              name="barcode"
-              id="adduser_barcode"
+              label={<FormattedMessage id="ui-users.information.preferredName" />}
+              name="personal.preferredFirstName"
+              id="adduser_preferredname"
               component={TextField}
               fullWidth
             />
@@ -125,11 +124,7 @@ class EditUserInfo extends React.Component {
         <Row>
           <Col xs={12} md={3}>
             <Field
-              label={(
-                <FormattedMessage id="ui-users.information.patronGroup">
-                  {(msg) => msg + ' *'}
-                </FormattedMessage>
-              )}
+              label={<FormattedMessage id="ui-users.information.patronGroup" />}
               name="patronGroup"
               id="adduser_group"
               component={Select}
@@ -137,26 +132,25 @@ class EditUserInfo extends React.Component {
               fullWidth
               dataOptions={patronGroupOptions}
               defaultValue={initialValues.patronGroup}
+              aria-required="true"
+              required
             />
           </Col>
           <Col xs={12} md={3}>
             <Field
-              label={(
-                <FormattedMessage id="ui-users.information.status">
-                  {(msg) => msg + ' *'}
-                </FormattedMessage>
-              )}
+              label={<FormattedMessage id="ui-users.information.status" />}
               name="active"
               id="useractive"
               component={Select}
               fullWidth
               disabled={isStatusFieldDisabled()}
               dataOptions={statusOptions}
-              format={(value) => (value ? 'true' : 'false')}
               defaultValue={initialValues.active}
+              aria-required="true"
+              required
             />
             {isUserExpired() && (
-              <span style={{ 'color': '#900', 'position': 'relative', 'top': '-10px', 'fontSize': '0.9em' }}>
+              <span className={css.expiredMessage}>
                 <FormattedMessage id="ui-users.errors.userExpired" />
               </span>
             )}
@@ -168,6 +162,15 @@ class EditUserInfo extends React.Component {
               dateFormat="YYYY-MM-DD"
               name="expirationDate"
               id="adduser_expirationdate"
+            />
+          </Col>
+          <Col xs={12} md={3}>
+            <Field
+              label={<FormattedMessage id="ui-users.information.barcode" />}
+              name="barcode"
+              id="adduser_barcode"
+              component={TextField}
+              fullWidth
             />
           </Col>
         </Row>

@@ -3,20 +3,38 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import {
   injectIntl,
-  intlShape,
   FormattedMessage,
 } from 'react-intl';
 import { Field } from 'redux-form';
-import { Select } from '@folio/stripes/components';
+import {
+  Select,
+  Label,
+  NoValue,
+} from '@folio/stripes/components';
 import { ControlledVocab } from '@folio/stripes/smart-components';
 import { stripesConnect, withStripes } from '@folio/stripes/core';
+
 
 import { validate } from '../components/util';
 import {
   Owners,
   CopyModal,
-  ChargeNotice
+  ChargeNotice,
 } from './FeeFinesTable';
+
+const columnMapping = {
+  feeFineType: (
+    <Label
+      tagName="span"
+      required
+    >
+      <FormattedMessage id="ui-users.feefines.columns.type" />
+    </Label>
+  ),
+  defaultAmount: <FormattedMessage id="ui-users.feefines.columns.amount" />,
+  chargeNoticeId: <FormattedMessage id="ui-users.feefines.columns.chargeNotice" />,
+  actionNoticeId: <FormattedMessage id="ui-users.feefines.columns.actionNotice" />,
+};
 
 class FeeFineSettings extends React.Component {
   static manifest = Object.freeze({
@@ -26,13 +44,13 @@ class FeeFineSettings extends React.Component {
       path: 'feefines',
       throwErrors: false,
       GET: {
-        path: 'feefines?query=cql.allRecords=1 sortby feeFineType&limit=500',
+        path: 'feefines?query=cql.allRecords=1 sortby feeFineType&limit=10000',
       },
     },
     owners: {
       type: 'okapi',
       records: 'owners',
-      path: 'owners?query=cql.allRecords=1 sortby owner&limit=500',
+      path: 'owners?query=cql.allRecords=1 sortby owner&limit=2000',
       accumulate: 'true',
       PUT: {
         path: 'owners/%{activeRecord.ownerId}',
@@ -51,7 +69,23 @@ class FeeFineSettings extends React.Component {
     stripes: PropTypes.shape({
       connect: PropTypes.func.isRequired,
     }).isRequired,
-    intl: intlShape.isRequired,
+    resources: PropTypes.object,
+    mutator: PropTypes.shape({
+      feefines: PropTypes.shape({
+        POST: PropTypes.func.isRequired,
+      }),
+      templates: PropTypes.shape({
+        GET: PropTypes.func.isRequired,
+      }),
+      activeRecord: PropTypes.shape({
+        update: PropTypes.func,
+      }),
+      owners: PropTypes.shape({
+        GET: PropTypes.func.isRequired,
+        PUT: PropTypes.func.isRequired,
+      }),
+    }).isRequired,
+    intl: PropTypes.object.isRequired,
   };
 
   constructor(props) {
@@ -60,7 +94,7 @@ class FeeFineSettings extends React.Component {
     this.state = {
       ownerId: '',
       owners: [],
-      templates: []
+      templates: [],
     };
 
     this.connectedControlledVocab = props.stripes.connect(ControlledVocab);
@@ -132,6 +166,9 @@ class FeeFineSettings extends React.Component {
     const myFeeFines = feefines.filter(f => f.ownerId !== this.state.ownerId) || [];
     const label = formatMessage({ id: 'ui-users.feefines.singular' });
     const itemErrors = validate(item, index, items, 'feeFineType', label);
+    const isAutomatedFeeFineNameUsed = feefines.some(feeFine => {
+      return item.feeFineType && feeFine.automatic && item.feeFineType.toLowerCase() === feeFine.feeFineType.toLowerCase();
+    });
 
     if (Number.isNaN(Number(item.defaultAmount)) && item.defaultAmount) {
       itemErrors.defaultAmount = formatMessage({ id: 'ui-users.feefines.errors.amountNumeric' });
@@ -162,6 +199,11 @@ class FeeFineSettings extends React.Component {
           />;
       }
     }
+
+    if (isAutomatedFeeFineNameUsed) {
+      itemErrors.feeFineType = <FormattedMessage id="ui-users.feefines.errors.reservedName" />;
+    }
+
     return itemErrors;
   }
 
@@ -172,12 +214,22 @@ class FeeFineSettings extends React.Component {
     const { owners } = this.state;
 
     items.forEach(i => {
-      const owner = owners.find(o => o.id === i.ownerId) || {};
-      if (!filterOwners.some(o => o.id === owner.id) && owner.id !== (this.shared || {}).id) {
+      const owner = owners.find(o => o.id === i.ownerId);
+      if (owner && !filterOwners.some(o => o.id === owner.id) && owner.id !== (this.shared || {}).id) {
         filterOwners.push(owner);
       }
     });
     return filterOwners;
+  }
+
+  getDefaultNotices = () => {
+    const { owners, ownerId } = this.state;
+    const { defaultActionNoticeId, defaultChargeNoticeId } = owners.find(o => o.id === ownerId) || {};
+
+    return {
+      defaultChargeNoticeId,
+      defaultActionNoticeId,
+    };
   }
 
   onUpdateOwner(item) {
@@ -187,6 +239,24 @@ class FeeFineSettings extends React.Component {
     owner.defaultActionNoticeId = item.defaultActionNoticeId;
     this.props.mutator.activeRecord.update({ ownerId });
     return this.props.mutator.owners.PUT(owner);
+  }
+
+  getNotice = (noticeTypeId, noticeType) => {
+    const { templates } = this.state;
+    const defaultNotices = this.getDefaultNotices();
+    const defaultNoticeId = defaultNotices[`default${noticeType}NoticeId`];
+    const defaultMessage = <FormattedMessage id="ui-users.settings.default" />;
+    let templateName = templates.find(t => t.id === noticeTypeId) || {};
+
+    if (noticeTypeId) {
+      templateName = templateName?.name;
+    } else if (!noticeTypeId && defaultNoticeId) {
+      templateName = defaultMessage;
+    } else {
+      templateName = <NoValue />;
+    }
+
+    return templateName;
   }
 
   render() {
@@ -221,15 +291,20 @@ class FeeFineSettings extends React.Component {
     };
 
     const formatter = {
-      'defaultAmount': (value) => (value.defaultAmount ? parseFloat(value.defaultAmount).toFixed(2) : '-'),
-      'chargeNoticeId': (value) => (value.chargeNoticeId ? ((templates.find(t => t.id === value.chargeNoticeId) || {}).name) : '-'),
-      'actionNoticeId': (value) => (value.actionNoticeId ? ((templates.find(t => t.id === value.actionNoticeId) || {}).name) : '-'),
+      'defaultAmount': (value) => (value.defaultAmount ? parseFloat(value.defaultAmount).toFixed(2) : <NoValue />),
+      'chargeNoticeId': ({ chargeNoticeId }) => this.getNotice(chargeNoticeId, 'Charge'),
+      'actionNoticeId': ({ actionNoticeId }) => this.getNotice(actionNoticeId, 'Action'),
     };
 
 
     const preCreateHook = (item) => {
       item.ownerId = ownerId;
+      item.automatic = false;
       return item;
+    };
+
+    const preUpdateHook = (item) => {
+      return _.pickBy(item, field => field !== '');
     };
 
     const owner = owners.find(o => o.id === ownerId) || {};
@@ -249,14 +324,9 @@ class FeeFineSettings extends React.Component {
 
     return (
       <this.connectedControlledVocab
-        {...this.props}
+        stripes={this.props.stripes}
         baseUrl="feefines"
-        columnMapping={{
-          feeFineType: formatMessage({ id: 'ui-users.feefines.columns.type' }),
-          defaultAmount: formatMessage({ id: 'ui-users.feefines.columns.amount' }),
-          chargeNoticeId: formatMessage({ id: 'ui-users.feefines.columns.chargeNotice' }),
-          actionNoticeId: formatMessage({ id: 'ui-users.feefines.columns.actionNotice' }),
-        }}
+        columnMapping={columnMapping}
         fieldComponents={fieldComponents}
         formatter={formatter}
         hiddenFields={['lastUpdated', 'numberOfObjects']}
@@ -266,9 +336,10 @@ class FeeFineSettings extends React.Component {
         nameKey="feefine"
         objectLabel=""
         preCreateHook={preCreateHook}
+        preUpdateHook={preUpdateHook}
         records="feefines"
         rowFilter={rowFilter}
-        rowFilterFunction={(item) => (item.ownerId === ownerId)}
+        rowFilterFunction={(item) => (item.ownerId === ownerId && !item.automatic)}
         sortby="feeFineType"
         validate={this.validate}
         visibleFields={['feeFineType', 'defaultAmount', 'chargeNoticeId', 'actionNoticeId']}

@@ -3,9 +3,9 @@ import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 import { stripesConnect } from '@folio/stripes/core';
 import { makeQueryFunction } from '@folio/stripes/smart-components';
+import { LoadingView } from '@folio/stripes/components';
 
 import { AccountsListing } from '../views';
-import ViewLoading from '../components/Loading/ViewLoading';
 
 const filterConfig = [
   {
@@ -36,7 +36,7 @@ const queryFunction = (findAll, queryTemplate, sortMap, fConfig, failOnCondition
   return (queryParams, pathComponents, resourceValues, logger) => {
     let cql = getCql(queryParams, pathComponents, resourceValues, logger);
     const userId = a[0].value;
-    if (cql === undefined) { cql = `userId=${userId}`; } else { cql = `(${cql}) and (userId=${userId})`; }
+    if (cql === undefined) { cql = `userId==${userId}`; } else { cql = `(${cql}) and (userId==${userId})`; }
     return cql;
   };
 };
@@ -61,7 +61,7 @@ class AccountsListingContainer extends React.Component {
       path: 'groups',
       params: {
         query: 'cql.allRecords=1 sortby group',
-        limit: '40',
+        limit: '200',
       },
       records: 'usergroups',
     },
@@ -70,18 +70,18 @@ class AccountsListingContainer extends React.Component {
     comments: {
       type: 'okapi',
       records: 'feefineactions',
-      path: 'feefineactions?query=(userId=:{id} and comments=*)&limit=%{activeRecord.comments}',
+      path: 'feefineactions?query=(userId==:{id} and comments=*)&limit=%{activeRecord.comments}',
     },
     filter: {
       type: 'okapi',
       records: 'accounts',
       recordsRequired: '%{activeRecord.records}',
-      path: 'accounts?query=userId=:{id}&limit=100',
+      path: 'accounts?query=userId==:{id}&limit=10000',
     },
     loans: {
       type: 'okapi',
       records: 'loans',
-      path: 'circulation/loans?query=(userId=:{id}) sortby id&limit=100',
+      path: 'circulation/loans?query=(userId==:{id}) sortby id&limit=100',
       permissionsRequired: 'circulation.loans.collection.get',
     },
     feefineshistory: {
@@ -89,7 +89,7 @@ class AccountsListingContainer extends React.Component {
       records: 'accounts',
       path: 'accounts',
       recordsRequired: '%{activeRecord.records}',
-      perRequest: 50,
+      perRequest: 10000,
       GET: {
         params: {
           query: queryFunction(
@@ -105,7 +105,7 @@ class AccountsListingContainer extends React.Component {
         staticFallback: { params: {} },
       },
     },
-    activeRecord: { records: 50 },
+    activeRecord: { records: 10000 },
     user: {},
   });
 
@@ -117,7 +117,16 @@ class AccountsListingContainer extends React.Component {
       feefineshistory: PropTypes.shape({
         records: PropTypes.arrayOf(PropTypes.object),
       }),
+      loans: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
       query: PropTypes.object,
+      patronGroups: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      selUser: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
     }),
     okapi: PropTypes.object,
     user: PropTypes.object,
@@ -173,7 +182,14 @@ class AccountsListingContainer extends React.Component {
     const user = this.getUser();
     const loans = resources.loans ? resources.loans.records : [];
     const patronGroup = this.getPatronGroup();
-    if (!user) return (<ViewLoading defaultWidth="100%" paneTitle="Loading accounts" />);
+    if (!user) {
+      return (
+        <LoadingView
+          defaultWidth="100%"
+          paneTitle={<FormattedMessage id="ui-users.accounts.loading" />}
+        />
+      );
+    }
     return (
       <AccountsListing user={user} loans={loans} patronGroup={patronGroup} {...this.props} />
     );

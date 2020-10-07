@@ -3,29 +3,44 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import {
   injectIntl,
-  intlShape,
   FormattedMessage,
 } from 'react-intl';
 import { Field } from 'redux-form';
-import { MultiSelection } from '@folio/stripes/components';
+import {
+  MultiSelection,
+  Label,
+} from '@folio/stripes/components';
 import { ControlledVocab } from '@folio/stripes/smart-components';
 import { stripesConnect, withStripes } from '@folio/stripes/core';
 
 import { validate } from '../components/util';
+
+const columnMapping = {
+  owner: (
+    <Label
+      tagName="span"
+      required
+    >
+      <FormattedMessage id="ui-users.owners.columns.owner" />
+    </Label>
+  ),
+  desc: <FormattedMessage id="ui-users.owners.columns.desc" />,
+  servicePointOwner: <FormattedMessage id="ui-users.owners.columns.asp" />,
+};
 
 class OwnerSettings extends React.Component {
   static manifest = Object.freeze({
     ownerServicePoints: {
       type: 'okapi',
       resource: 'service-points',
-      path: 'service-points',
+      path: 'service-points?limit=200',
     },
     owners: {
       type: 'okapi',
       records: 'owners',
       path: 'owners',
       GET: {
-        path: 'owners?query=cql.allRecords=1 sortby owner&limit=500'
+        path: 'owners?query=cql.allRecords=1 sortby owner&limit=2000'
       }
     },
   });
@@ -34,7 +49,8 @@ class OwnerSettings extends React.Component {
     stripes: PropTypes.shape({
       connect: PropTypes.func.isRequired,
     }).isRequired,
-    intl: intlShape.isRequired,
+    resources: PropTypes.object,
+    intl: PropTypes.object.isRequired,
   };
 
   constructor(props) {
@@ -132,11 +148,7 @@ class OwnerSettings extends React.Component {
       <this.connectedControlledVocab
         {...this.props}
         baseUrl="owners"
-        columnMapping={{
-          'owner': formatMessage({ id: 'ui-users.owners.columns.owner' }),
-          'desc': formatMessage({ id: 'ui-users.owners.columns.desc' }),
-          'servicePointOwner': formatMessage({ id: 'ui-users.owners.columns.asp' }),
-        }}
+        columnMapping={columnMapping}
         fieldComponents={fieldComponents}
         formatter={formatter}
         hiddenFields={['lastUpdated', 'numberOfObjects']}

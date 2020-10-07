@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import React from 'react';
 import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
@@ -11,6 +10,11 @@ import {
   Icon,
   Headline
 } from '@folio/stripes/components';
+
+import {
+  loanActions,
+  loanStatuses,
+} from '../../../constants';
 
 /**
  * User-details "Loans" accordion pane.
@@ -35,13 +39,31 @@ class UserLoans extends React.Component {
     openLoansCount: {
       type: 'okapi',
       GET: {
-        path: 'circulation/loans?query=(userId==:{id} and status.name<>Closed)&limit=1',
+        path: 'circulation/loans',
+        params: {
+          query: `(userId==:{id} and status.name<>${loanStatuses.CLOSED})`,
+          limit: '1',
+        },
+      },
+    },
+    claimedReturnedCount: {
+      type: 'okapi',
+      GET: {
+        path: 'circulation/loans',
+        params: {
+          query: `userId==:{id} and status.name<>${loanStatuses.CLOSED} and action==${loanActions.CLAIMED_RETURNED}`,
+          limit: '1',
+        },
       },
     },
     closedLoansCount: {
       type: 'okapi',
       GET: {
-        path: 'circulation/loans?query=(userId==:{id} and status.name==Closed)&limit=1',
+        path: 'circulation/loans',
+        params: {
+          query: `userId==:{id} and status.name==${loanStatuses.CLOSED}`,
+          limit: '1',
+        },
       },
     },
     userid: {},
@@ -52,6 +74,9 @@ class UserLoans extends React.Component {
       loansHistory: PropTypes.shape({
         records: PropTypes.arrayOf(PropTypes.object),
       }),
+      closedLoansCount: PropTypes.object,
+      openLoansCount: PropTypes.object,
+      claimedReturnedCount: PropTypes.object,
     }),
     accordionId: PropTypes.string,
     expanded: PropTypes.bool,
@@ -63,6 +88,20 @@ class UserLoans extends React.Component {
     }),
   };
 
+  isLoading() {
+    const {
+      resources: {
+        openLoansCount,
+        claimedReturnedCount,
+        closedLoansCount,
+      }
+    } = this.props;
+
+    return (openLoansCount?.isPending ?? true) &&
+      (closedLoansCount?.isPending ?? true) &&
+      (claimedReturnedCount?.isPending ?? true);
+  }
+
   render() {
     const {
       expanded,
@@ -70,14 +109,30 @@ class UserLoans extends React.Component {
       accordionId,
       resources,
       match: { params },
+      location,
     } = this.props;
 
-    const openLoansTotal = _.get(resources.openLoansCount, ['records', '0', 'totalRecords'], 0);
-    const closedLoansTotal = _.get(resources.closedLoansCount, ['records', '0', 'totalRecords'], 0);
-    const openLoansCount = (_.get(resources.openLoansCount, ['isPending'], true)) ? -1 : openLoansTotal;
-    const closedLoansCount = (_.get(resources.closedLoansCount, ['isPending'], true)) ? -1 : closedLoansTotal;
-    const loansLoaded = openLoansCount >= 0 && closedLoansCount >= 0;
+    const openLoansCount = resources?.openLoansCount?.records?.[0]?.totalRecords ?? 0;
+    const claimedReturnedCount = resources?.claimedReturnedCount?.records?.[0]?.totalRecords ?? 0;
+    const closedLoansCount = resources?.closedLoansCount?.records?.[0]?.totalRecords ?? 0;
+    const loansLoaded = !this.isLoading();
     const displayWhenClosed = loansLoaded ? (<Badge>{openLoansCount}</Badge>) : (<Icon icon="spinner-ellipsis" width="10px" />);
+
+    const items = [
+      {
+        id: 'clickable-viewcurrentloans',
+        count: openLoansCount,
+        claimedReturnedCount,
+        formattedMessageId: 'ui-users.loans.numOpenLoans',
+        status: 'open',
+      },
+      {
+        id: 'clickable-viewclosedloans',
+        count: closedLoansCount,
+        formattedMessageId: 'ui-users.loans.numClosedLoans',
+        status: 'closed',
+      },
+    ];
 
     return (
       <Accordion
@@ -97,25 +152,20 @@ class UserLoans extends React.Component {
               <li key={index}>
                 <Link
                   id={item.id}
-                  to={`/users/${params.id}/loans/${item.status}`}
+                  to={{
+                    pathname: `/users/${params.id}/loans/${item.status}`,
+                    state: { search: location.search },
+                  }}
                 >
                   <FormattedMessage id={item.formattedMessageId} values={{ count: item.count }} />
                 </Link>
+                {item.claimedReturnedCount > 0 &&
+                  <span id="claimed-returned-count">
+                  {' '}<FormattedMessage id="ui-users.loans.numClaimedReturnedLoans" values={{ count: item.claimedReturnedCount }} />
+                  </span>
+                }
               </li>)}
-            items={[
-              {
-                id: 'clickable-viewcurrentloans',
-                count: openLoansCount,
-                formattedMessageId: 'ui-users.loans.numOpenLoans',
-                status: 'open',
-              },
-              {
-                id: 'clickable-viewclosedloans',
-                count: closedLoansCount,
-                formattedMessageId: 'ui-users.loans.numClosedLoans',
-                status: 'closed',
-              },
-            ]}
+            items={items}
           /> : <Icon icon="spinner-ellipsis" width="10px" />
         }
       </Accordion>

@@ -8,7 +8,6 @@ import {
 import {
   FormattedMessage,
   injectIntl,
-  intlShape,
 } from 'react-intl';
 
 import { IfPermission } from '@folio/stripes/core';
@@ -21,11 +20,23 @@ import {
 } from '@folio/stripes/components';
 
 import ActionsBar from '../../../components/ActionsBar/ActionsBar';
-import Label from '../../../../Label/Label';
+import { itemStatuses } from '../../../../../constants';
+import { hasEveryLoanItemStatus, hasAnyLoanItemStatus } from '../../../../util';
+
+import css from './OpenLoansSubHeader.css';
+
+// For convenience of enabling or disabling buttons for similar item states,
+// this groups together all the relevant item statuses for items that are
+// lost in one way or another ('losty' items?).
+const lostItemStatuses = [
+  itemStatuses.AGED_TO_LOST,
+  itemStatuses.CLAIMED_RETURNED,
+  itemStatuses.DECLARED_LOST,
+];
 
 class OpenLoansSubHeader extends React.Component {
   static propTypes = {
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     checkedLoans: PropTypes.object.isRequired,
     columnMapping: PropTypes.object.isRequired,
     loans: PropTypes.arrayOf(PropTypes.object).isRequired,
@@ -34,6 +45,7 @@ class OpenLoansSubHeader extends React.Component {
     toggleColumn: PropTypes.func.isRequired,
     buildRecords: PropTypes.func.isRequired,
     renewSelected: PropTypes.func.isRequired,
+    openBulkClaimReturnedModal: PropTypes.func.isRequired,
     openPatronBlockedModal: PropTypes.func.isRequired,
     showChangeDueDateDialog: PropTypes.func.isRequired,
   };
@@ -50,7 +62,13 @@ class OpenLoansSubHeader extends React.Component {
       'dueDate',
       'loanDate',
       'item.barcode',
-      'item.callNumber',
+      'item.callNumberComponents.prefix',
+      'item.callNumberComponents.callNumber',
+      'item.callNumberComponents.suffix',
+      'item.volume',
+      'item.enumeration',
+      'item.chronology',
+      'item.copyNumber',
       'item.contributors',
       'item.holdingsRecordId',
       'item.instanceId',
@@ -114,6 +132,7 @@ class OpenLoansSubHeader extends React.Component {
       buildRecords,
       patronBlocks,
       openPatronBlockedModal,
+      openBulkClaimReturnedModal,
     } = this.props;
 
     const {
@@ -122,23 +141,25 @@ class OpenLoansSubHeader extends React.Component {
 
     const noSelectedLoans = isEmpty(checkedLoans);
     const resultCount = <FormattedMessage id="ui-users.resultCount" values={{ count: loans.length }} />;
+    const claimedReturnedCount = loans.filter(l => l?.item?.status?.name === itemStatuses.CLAIMED_RETURNED).length;
     const clonedLoans = cloneDeep(loans);
     const recordsToCSV = buildRecords(clonedLoans);
     const countRenews = patronBlocks.filter(p => p.renewals === true);
+    const onlyClaimedReturnedItemsSelected = hasEveryLoanItemStatus(checkedLoans, itemStatuses.CLAIMED_RETURNED);
+    const onlyLostyItemsSelected = hasAnyLoanItemStatus(checkedLoans, lostItemStatuses);
 
     return (
       <ActionsBar
         contentStart={
           <span style={{ display: 'flex' }}>
-            <Label>
-              {resultCount}
-            </Label>
+            <span id="loan-count">
+              {resultCount} {claimedReturnedCount > 0 &&
+                <FormattedMessage id="ui-users.loans.numClaimedReturnedLoans" values={{ count: claimedReturnedCount }} />
+              }
+            </span>
             <Dropdown
               id="columnsDropdown"
-              style={{
-                float: 'right',
-                marginLeft: '10px',
-              }}
+              className={css.columnsDropdown}
               group
               pullRight
               onToggle={this.onDropdownClick}
@@ -169,7 +190,7 @@ class OpenLoansSubHeader extends React.Component {
               <Button
                 marginBottom0
                 id="renew-all"
-                disabled={noSelectedLoans}
+                disabled={noSelectedLoans || onlyClaimedReturnedItemsSelected}
                 onClick={!isEmpty(countRenews)
                   ? openPatronBlockedModal
                   : renewSelected
@@ -178,11 +199,19 @@ class OpenLoansSubHeader extends React.Component {
                 <FormattedMessage id="ui-users.renew" />
               </Button>
             </IfPermission>
+            <Button
+              marginBottom0
+              id="bulk-claim-returned"
+              disabled={noSelectedLoans || onlyClaimedReturnedItemsSelected}
+              onClick={openBulkClaimReturnedModal}
+            >
+              <FormattedMessage id="ui-users.loans.claimReturned" />
+            </Button>
             <IfPermission perm="ui-users.loans.edit">
               <Button
                 marginBottom0
                 id="change-due-date-all"
-                disabled={noSelectedLoans}
+                disabled={noSelectedLoans || onlyLostyItemsSelected}
                 onClick={showChangeDueDateDialog}
               >
                 <FormattedMessage id="stripes-smart-components.cddd.changeDueDate" />

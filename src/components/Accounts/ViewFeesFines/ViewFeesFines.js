@@ -3,18 +3,14 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import {
   Button,
-  Row,
-  Col,
   MultiColumnList,
-  UncontrolledDropdown,
+  Dropdown,
   MenuItem,
   DropdownMenu,
-  Popover,
 } from '@folio/stripes/components';
 
 import {
   FormattedMessage,
-  intlShape,
   FormattedTime,
   FormattedDate,
 } from 'react-intl';
@@ -23,6 +19,8 @@ import {
   calculateSortParams,
   nav,
 } from '../../util';
+
+import { isRefundAllowed } from '../accountFunctions';
 
 class ViewFeesFines extends React.Component {
   static propTypes = {
@@ -50,7 +48,7 @@ class ViewFeesFines extends React.Component {
     history: PropTypes.object,
     user: PropTypes.object,
     visibleColumns: PropTypes.arrayOf(PropTypes.string),
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     selectedAccounts: PropTypes.arrayOf(PropTypes.object),
   };
 
@@ -60,7 +58,6 @@ class ViewFeesFines extends React.Component {
     this.onSort = this.onSort.bind(this);
     this.toggleAll = this.toggleAll.bind(this);
     this.handleOptionsChange = this.handleOptionsChange.bind(this);
-    this.comments = this.comments.bind(this);
     this.getLoan = this.getLoan.bind(this);
     this.onRowClick = this.onRowClick.bind(this);
 
@@ -142,52 +139,21 @@ class ViewFeesFines extends React.Component {
     }));
   }
 
-  comments(f) {
-    const t = f.feeFineType ? f.feeFineType : '';
-    const comments = _.get(this.props.resources, ['comments', 'records'], []);
-    const actions = _.orderBy(comments.filter(c => c.accountId === f.id), ['dateAction'], ['asc']);
-    const myComments = actions.filter(a => a.comments).map(a => a.comments);
-    const n = myComments.length;
-
-    return (
-      <div data-test-popover-link>
-        <Row>
-          <Col>{t}</Col>
-          {(n > 0) ?
-            <Col style={{ marginLeft: '5px' }}>
-              <Popover id="id-popover" key={myComments[n - 1]}>
-                <div id="popover-comments-1" data-role="target">
-                  <img id="popover-comments-img" src="https://png.icons8.com/color/18/000000/note.png" alt="" />
-                </div>
-                <p id="popover-comments" data-role="popover">
-                  <b>
-                    <FormattedMessage id="ui-users.accounts.history.comment" />
-                    {' '}
-                    {n}
-                    {' '}
-                    <FormattedMessage id="ui-users.accounts.history.of" />
-                    {' '}
-                    {n}
-                    {':'}
-                  </b>
-                  {' '}
-                  {myComments[n - 1]}
-                  {' '}
-                  <a href="/users/123" className="active">Go to details</a>
-                </p>
-              </Popover>
-            </Col>
-            : ' '}
-        </Row>
-      </div>
-    );
-  }
-
   getLoan(f) {
     const { match: { params: { id } }, loans } = this.props;
     if (loans.length === 0 || !id || f.loanId === '0') return {};
     const res = loans.find(l => l.id === f.loanId) || {};
     return res;
+  }
+
+  formatTitle(item) {
+    const {
+      materialType,
+      title,
+    } = item;
+    const instanceTypeString = materialType ? `(${materialType})` : '';
+
+    return title ? `${title} ${instanceTypeString}` : '-';
   }
 
   formatDateTime(dateTimeStr) {
@@ -204,19 +170,19 @@ class ViewFeesFines extends React.Component {
     return {
       '  ': f => (
         <input
-          checked={accounts.find(a => a.id === f.id)}
+          checked={(accounts.findIndex(a => a.id === f.id) !== -1)}
           onClick={e => this.toggleItem(e, f)}
           type="checkbox"
         />
       ),
       'metadata.createdDate': f => (f.metadata ? <FormattedDate value={f.metadata.createdDate} /> : '-'),
       'metadata.updatedDate': f => (f.metadata && f.metadata.createdDate !== f.metadata.updatedDate ? <FormattedDate value={f.metadata.updatedDate} /> : '-'),
-      'feeFineType': f => (f.feeFineType ? this.comments(f) : '-'),
+      'feeFineType': f => (f.feeFineType ?? '-'),
       'amount': f => (f.amount ? parseFloat(f.amount).toFixed(2) : '-'),
       'remaining': f => parseFloat(f.remaining).toFixed(2) || '0.00',
       'paymentStatus.name': f => (f.paymentStatus || {}).name || '-',
       'feeFineOwner': f => (f.feeFineOwner ? f.feeFineOwner : '-'),
-      'title': f => (f.title ? `${f.title} (${f.materialType})` : '-'),
+      'title': item => this.formatTitle(item),
       'barcode': f => (f.barcode ? f.barcode : '-'),
       'callNumber': f => (f.callNumber ? f.callNumber : '-'),
       'dueDate': f => (f.dueDate ? this.formatDateTime(f.dueDate) : '-'),
@@ -286,6 +252,12 @@ class ViewFeesFines extends React.Component {
     }));
   }
 
+  rowUpdater = (f) => {
+    const accounts = this.props.selectedAccounts;
+    return this.state.allChecked ||
+    (accounts.findIndex(a => a.id === f.id) !== -1);
+  };
+
   handleOptionsChange(itemMeta, e) {
     e.preventDefault();
     e.stopPropagation();
@@ -327,6 +299,14 @@ class ViewFeesFines extends React.Component {
     }, [a]);
   }
 
+  refund(a, e) {
+    if (e) {
+      e.preventDefault();
+    }
+
+    this.props.onChangeActions({ refundModal: true }, [a]);
+  }
+
   loanDetails(a, e) {
     const { history, match: { params } } = this.props;
     nav.onClickViewLoanActionsHistory(e, { id: a.loanId }, history, params);
@@ -340,14 +320,16 @@ class ViewFeesFines extends React.Component {
       transfer: disabled,
       error: disabled,
       loan: (a.loanId === '0' || !a.loanId),
+      refund: !isRefundAllowed(a),
     };
+
     const buttonDisabled = !this.props.stripes.hasPerm('ui-users.feesfines.actions.all');
 
     return (
-      <UncontrolledDropdown
+      <Dropdown
         onSelectItem={this.handleOptionsChange}
       >
-        <Button id="ellipsis-button" data-role="toggle" buttonStyle="hover dropdownActive">
+        <Button data-test-ellipsis-button data-role="toggle" buttonStyle="hover dropdownActive">
           <strong>•••</strong>
         </Button>
         <DropdownMenu id="ellipsis-drop-down" data-role="menu">
@@ -361,8 +343,8 @@ class ViewFeesFines extends React.Component {
               <FormattedMessage id="ui-users.accounts.history.button.waive" />
             </Button>
           </MenuItem>
-          <MenuItem>
-            <Button disabled buttonStyle="dropdownItem">
+          <MenuItem itemMeta={{ a, action: 'refund' }}>
+            <Button disabled={!((elipsis.refund === false) && (buttonDisabled === false))} buttonStyle="dropdownItem">
               <FormattedMessage id="ui-users.accounts.history.button.refund" />
             </Button>
           </MenuItem>
@@ -383,7 +365,7 @@ class ViewFeesFines extends React.Component {
             </Button>
           </MenuItem>
         </DropdownMenu>
-      </UncontrolledDropdown>
+      </Dropdown>
     );
   }
 
@@ -403,7 +385,7 @@ class ViewFeesFines extends React.Component {
       'remaining': intl.formatMessage({ id: 'ui-users.accounts.history.columns.remaining' }),
       'paymentStatus.name': intl.formatMessage({ id: 'ui-users.accounts.history.columns.status' }),
       'feeFineOwner': intl.formatMessage({ id: 'ui-users.accounts.history.columns.owner' }),
-      'title': intl.formatMessage({ id: 'ui-users.accounts.history.columns.title' }),
+      'title': intl.formatMessage({ id: 'ui-users.accounts.history.columns.instance' }),
       'barcode': intl.formatMessage({ id: 'ui-users.accounts.history.columns.barcode' }),
       'callNumber': intl.formatMessage({ id: 'ui-users.accounts.history.columns.number' }),
       'dueDate': intl.formatMessage({ id: 'ui-users.accounts.history.columns.due' }),
@@ -439,6 +421,7 @@ class ViewFeesFines extends React.Component {
         sortOrder={sortOrder[0]}
         sortDirection={`${sortDirection[0]}ending`}
         onRowClick={this.onRowClick}
+        rowUpdater={this.rowUpdater}
       />
     );
   }

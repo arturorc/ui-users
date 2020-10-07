@@ -9,13 +9,15 @@ import {
   Row
 } from '@folio/stripes/components';
 
+import css from './PatronBlockModal.css';
+
 const PatronBlockModal = ({ open, onClose, patronBlocks, viewUserPath }) => {
   const blocks = take(orderBy(patronBlocks, ['metadata.updatedDate'], ['desc']), 3);
   const renderBlocks = blocks.map(block => {
     return (
-      <Row>
+      <Row key={block.id || block.patronBlockConditionId}>
         <Col xs>
-          <b>{block.desc || ''}</b>
+          <b data-test-patron-block-reason>{block.desc || block.message || ''}</b>
         </Col>
       </Row>
     );
@@ -23,6 +25,7 @@ const PatronBlockModal = ({ open, onClose, patronBlocks, viewUserPath }) => {
 
   return (
     <Modal
+      data-test-patron-block-modal
       open={open}
       onClose={onClose}
       label={
@@ -36,7 +39,7 @@ const PatronBlockModal = ({ open, onClose, patronBlocks, viewUserPath }) => {
       <Row>
         <Col xs>
           <FormattedMessage id="ui-users.blocks.reason" />
-          {':'}
+          :
         </Col>
       </Row>
       {renderBlocks}
@@ -46,8 +49,20 @@ const PatronBlockModal = ({ open, onClose, patronBlocks, viewUserPath }) => {
         <Col xs={4}>
           <Row end="xs">
             <Col>
-              <Button id="patron-block-close-modal" onClick={onClose}><FormattedMessage id="ui-users.blocks.closeButton" /></Button>
-              <Button id="patron-block-details-modal" style={{ 'marginLeft': '15px' }} buttonStyle="primary" to={viewUserPath}><FormattedMessage id="ui-users.blocks.detailsButton" /></Button>
+              <Button
+                id="patron-block-close-modal"
+                onClick={onClose}
+              >
+                <FormattedMessage id="ui-users.blocks.closeButton" />
+              </Button>
+              <Button
+                id="patron-block-details-modal"
+                className={css.detailsButton}
+                buttonStyle="primary"
+                to={viewUserPath}
+              >
+                <FormattedMessage id="ui-users.blocks.detailsButton" />
+              </Button>
             </Col>
           </Row>
         </Col>

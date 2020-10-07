@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
-import { FormattedMessage, injectIntl, intlShape } from 'react-intl';
+import { FormattedMessage, injectIntl } from 'react-intl';
 import {
   Field,
   formValueSelector,
@@ -37,8 +37,8 @@ class RequestPreferencesEdit extends Component {
     })),
     addressTypes: addressTypesShape,
     setFieldValue: PropTypes.func.isRequired,
-    intl: intlShape,
     defaultDeliveryAddressTypeId: nullOrStringIsRequiredTypeValidator,
+    intl: PropTypes.object.isRequired,
   }
 
   componentDidUpdate(prevProps) {
@@ -61,15 +61,17 @@ class RequestPreferencesEdit extends Component {
 
   renderDefaultDeliveryAddressSelect() {
     return (
-      <Field
-        name="requestPreferences.defaultDeliveryAddressTypeId"
-        label={<FormattedMessage id="ui-users.requests.defaultDeliveryAddress" />}
-        dataOptions={this.getAddressOptions()}
-        component={Select}
-        validate={this.defaultDeliveryAddressValidator}
-        placeholder={this.props.intl.formatMessage({ id: 'ui-users.requests.selectDeliveryAddress' })}
-        required
-      />
+      <div data-test-default-delivery-address-field>
+        <Field
+          name="requestPreferences.defaultDeliveryAddressTypeId"
+          label={<FormattedMessage id="ui-users.requests.defaultDeliveryAddress" />}
+          dataOptions={this.getAddressOptions()}
+          component={Select}
+          validate={this.defaultDeliveryAddressValidator}
+          placeholder={this.props.intl.formatMessage({ id: 'ui-users.requests.selectDeliveryAddress' })}
+          required
+        />
+      </div>
     );
   }
 
@@ -114,6 +116,7 @@ class RequestPreferencesEdit extends Component {
 
     return (
       <Field
+        data-test-fulfillment-preference
         name="requestPreferences.fulfillment"
         label={<FormattedMessage id="ui-users.requests.fulfillmentPreference" />}
         dataOptions={options}
@@ -174,7 +177,7 @@ class RequestPreferencesEdit extends Component {
     } = this.props;
 
     return (
-      <Col xs={12} md={6}>
+      <Col xs={12}>
         <Row>
           <Col
             xs={12}
@@ -190,6 +193,7 @@ class RequestPreferencesEdit extends Component {
         <Row className={styles.rowMargin}>
           <Col xs={12} md={6}>
             <Field
+              data-test-hold-shelf-checkbox
               name="requestPreferences.holdShelf"
               label={<FormattedMessage id="ui-users.requests.holdShelf" />}
               checked
@@ -199,6 +203,7 @@ class RequestPreferencesEdit extends Component {
           </Col>
           <Col xs={12} md={6}>
             <Field
+              data-test-delivery-checkbox
               name="requestPreferences.delivery"
               label={<FormattedMessage id="ui-users.requests.delivery" />}
               checked={deliveryAvailable}

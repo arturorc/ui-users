@@ -95,7 +95,7 @@ class BulkRenewInfo extends React.Component {
     } = this.state;
 
     return (
-      <React.Fragment>
+      <>
         <div>
           <Layout className="flex">
             {
@@ -108,6 +108,7 @@ class BulkRenewInfo extends React.Component {
                 />
                 <SafeHTMLMessage
                   id="ui-users.brd.itemNotRenewed"
+                  tagName="span"
                   values={{
                     count: failedRenewals.length
                   }}
@@ -124,6 +125,7 @@ class BulkRenewInfo extends React.Component {
                 />
                 <SafeHTMLMessage
                   id="ui-users.brd.itemSuccessfullyRenewed"
+                  tagName="span"
                   values={{
                     count: successRenewals.length
                   }}
@@ -174,7 +176,7 @@ class BulkRenewInfo extends React.Component {
             onClose={this.closeBulkOverrideDialog}
           />
         }
-      </React.Fragment>
+      </>
     );
   }
 }

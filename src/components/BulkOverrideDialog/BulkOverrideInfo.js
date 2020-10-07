@@ -134,6 +134,13 @@ class BulkOverrideInfo extends React.Component {
       user: {
         barcode: userBarcode
       },
+      stripes: {
+        user: {
+          user: {
+            curServicePoint,
+          },
+        },
+      },
       onCancel,
       onCloseRenewModal,
     } = this.props;
@@ -149,7 +156,8 @@ class BulkOverrideInfo extends React.Component {
             userBarcode,
             itemBarcode: barcode,
             comment: additionalInfo,
-            ...(datetime && { dueDate: datetime })
+            servicePointId: curServicePoint?.id,
+            ...(datetime && { dueDate: datetime }),
           }
         );
       }
@@ -183,14 +191,10 @@ class BulkOverrideInfo extends React.Component {
 
     return (
       <div>
-        <Layout className="flex">
-          <Layout className="flex">
-            <SafeHTMLMessage
-              id="ui-users.brd.itemsSelected"
-              values={{ count: selectedItems }}
-            />
-          </Layout>
-        </Layout>
+        <SafeHTMLMessage
+          id="ui-users.brd.itemsSelected"
+          values={{ count: selectedItems }}
+        />
         {
           showDueDatePicker &&
             <div data-test-due-date-picker>

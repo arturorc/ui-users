@@ -3,12 +3,9 @@ import PropTypes from 'prop-types';
 import {
   FormattedMessage,
   injectIntl,
-  intlShape,
 } from 'react-intl';
 import { ControlledVocab } from '@folio/stripes/smart-components';
 import { stripesConnect, withStripes } from '@folio/stripes/core';
-
-import PatronGroupNumberOfUsers from '../components/PatronGroupNumberOfUsers';
 
 class PatronGroupsSettings extends React.Component {
   // adding the desired-count parameter, :50, to this query is an egregious
@@ -32,7 +29,7 @@ class PatronGroupsSettings extends React.Component {
     resources: PropTypes.shape({
       usersPerGroup: PropTypes.object,
     }).isRequired,
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
   };
 
   constructor(props) {
@@ -41,16 +38,7 @@ class PatronGroupsSettings extends React.Component {
   }
 
   render() {
-    const {
-      resources,
-      intl,
-    } = this.props;
-    const formatter = {
-      numberOfObjects: item => (<PatronGroupNumberOfUsers
-        item={item}
-        usersPerGroup={resources ? resources.usersPerGroup : null}
-      />),
-    };
+    const { intl } = this.props;
 
     return (
       <this.connectedControlledVocab
@@ -64,11 +52,11 @@ class PatronGroupsSettings extends React.Component {
         labelSingular={intl.formatMessage({ id: 'ui-users.information.patronGroup' })}
         objectLabel={<FormattedMessage id="ui-users.information.patronGroup.users" />}
         visibleFields={['group', 'desc']}
+        hiddenFields={['numberOfObjects']}
         columnMapping={{
           group: intl.formatMessage({ id: 'ui-users.information.patronGroup' }),
           desc: intl.formatMessage({ id: 'ui-users.description' }),
         }}
-        formatter={formatter}
         nameKey="group"
         id="patrongroups"
         sortby="group"

@@ -31,7 +31,6 @@ import { ViewMetaData } from '@folio/stripes/smart-components';
 import moment from 'moment';
 import {
   FormattedMessage,
-  intlShape,
 } from 'react-intl';
 import { getFullName } from '../util';
 import UserInfo from '../Accounts/ChargeFeeFine/UserInfo';
@@ -62,14 +61,14 @@ class PatronBlockForm extends React.Component {
     submitting: PropTypes.bool,
     invalid: PropTypes.bool,
     params: PropTypes.object,
-    selectedItem: PropTypes.object,
     onDeleteItem: PropTypes.func,
     onClose: PropTypes.func,
     handleSubmit: PropTypes.func.isRequired,
     connect: PropTypes.func,
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     stripes: PropTypes.object,
     currentValues: PropTypes.object,
+    initialValues: PropTypes.object,
   };
 
   constructor(props) {
@@ -111,7 +110,7 @@ class PatronBlockForm extends React.Component {
           <PaneHeaderIconButton
             id="close-patron-block"
             onClick={this.props.onClose}
-            ariaLabel={ariaLabel}
+            aria-label={ariaLabel}
             icon="times"
           />
         )}
@@ -145,7 +144,7 @@ class PatronBlockForm extends React.Component {
     const {
       intl,
       params,
-      selectedItem,
+      initialValues,
       user = {},
       currentValues: {
         borrowing,
@@ -182,10 +181,10 @@ class PatronBlockForm extends React.Component {
                   onToggle={this.handleSectionToggle}
                   open={this.state.sections.blockInformationSection}
                 >
-                  {!_.isEmpty(selectedItem) ?
+                  {!_.isEmpty(initialValues) ?
                     <Row>
                       <Col xs={12} sm={10} md={7} lg={5}>
-                        <this.connectedViewMetaData metadata={selectedItem.metadata} />
+                        <this.connectedViewMetaData metadata={initialValues.metadata} />
                       </Col>
                     </Row> : ''
                 }
@@ -263,7 +262,7 @@ class PatronBlockForm extends React.Component {
                       <Field
                         name="requests"
                         checked={requests}
-                        label={<FormattedMessage id="ui-users.blocks.form.label.request" />}
+                        label={<FormattedMessage id="ui-users.blocks.form.label.requests" />}
                         component={Checkbox}
                       />
                     </Col>

@@ -1,8 +1,10 @@
-import { Factory, faker } from '@bigtest/mirage';
+import { Factory } from 'miragejs';
+import faker from 'faker';
 
 export default Factory.extend({
   id: () => faker.random.uuid(),
-  // ownerId: () => faker.random.uuid(),
+  automatic: false,
+  ownerId: () => faker.random.uuid(),
   feeFineType : (i) => 'Damage camera fee' + i,
   defaultAmount : (i) => 1000.0 + i * 10,
 

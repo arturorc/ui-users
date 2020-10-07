@@ -10,23 +10,29 @@ import {
   Accordion,
   Label,
   Datepicker,
-  Headline
+  Headline,
 } from '@folio/stripes/components';
+import { IfPermission } from '@folio/stripes/core';
 
-import { addressTypesShape } from '../../../shapes';
+import {
+  addressTypesShape,
+  departmentsShape,
+} from '../../../shapes';
 
-import PasswordControl from './PasswordControl';
 import CreateResetPasswordControl from './CreateResetPasswordControl';
 import RequestPreferencesEdit from './RequestPreferencesEdit';
+import DepartmentsNameEdit from './DepartmentsNameEdit';
 
 class EditExtendedInfo extends Component {
   static propTypes = {
     addressTypes: addressTypesShape,
     expanded: PropTypes.bool.isRequired,
+    departments: departmentsShape,
     userId: PropTypes.string.isRequired,
     userEmail: PropTypes.string.isRequired,
     accordionId: PropTypes.string.isRequired,
     userFirstName: PropTypes.string.isRequired,
+    username: PropTypes.string.isRequired,
     onToggle: PropTypes.func.isRequired,
   };
 
@@ -36,7 +42,7 @@ class EditExtendedInfo extends Component {
         size="large"
         tag="h3"
       >
-        {<FormattedMessage id="ui-users.extended.extendedInformation" />}
+        <FormattedMessage id="ui-users.extended.extendedInformation" />
       </Headline>
     );
   };
@@ -49,7 +55,9 @@ class EditExtendedInfo extends Component {
       userId,
       userFirstName,
       userEmail,
+      username,
       addressTypes,
+      departments,
     } = this.props;
 
     const accordionHeader = this.buildAccordionHeader();
@@ -114,29 +122,45 @@ class EditExtendedInfo extends Component {
         <Row>
           <Col
             xs={12}
+            md={6}
+          >
+            <Row>
+              <Col
+                xs={12}
+                md={6}
+              >
+                <Field
+                  label={<FormattedMessage id="ui-users.information.username" />}
+                  name="username"
+                  id="adduser_username"
+                  component={TextField}
+                  fullWidth
+                  validStylesEnabled
+                />
+              </Col>
+              <IfPermission perm="ui-users.reset.password">
+                {isEditForm && username &&
+                  (
+                    <CreateResetPasswordControl
+                      userId={userId}
+                      email={userEmail}
+                      name={userFirstName}
+                      username={username}
+                    />
+                  )
+                }
+              </IfPermission>
+            </Row>
+            <Row>
+              <RequestPreferencesEdit addressTypes={addressTypes} />
+            </Row>
+          </Col>
+          <Col
+            xs={12}
             md={3}
           >
-            <Field
-              label={<FormattedMessage id="ui-users.information.username" />}
-              name="username"
-              id="adduser_username"
-              component={TextField}
-              fullWidth
-              validStylesEnabled
-            />
+            <DepartmentsNameEdit departments={departments} />
           </Col>
-          {
-            isEditForm
-              ? (
-                <CreateResetPasswordControl
-                  userId={userId}
-                  email={userEmail}
-                  name={userFirstName}
-                />
-              )
-              : <PasswordControl />
-          }
-          <RequestPreferencesEdit addressTypes={addressTypes} />
         </Row>
         <br />
       </Accordion>

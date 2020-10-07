@@ -2,7 +2,6 @@ import React from 'react';
 import {
   FormattedMessage,
   injectIntl,
-  intlShape,
 } from 'react-intl';
 import PropTypes from 'prop-types';
 import { Field } from 'redux-form';
@@ -12,7 +11,7 @@ import {
   Row,
   Col,
   Accordion,
-  Headline
+  Headline,
 } from '@folio/stripes/components';
 import { AddressEditList } from '@folio/stripes/smart-components';
 
@@ -51,7 +50,7 @@ const EditContactInfo = ({
       open={expanded}
       id={accordionId}
       onToggle={onToggle}
-      label={<Headline size="large" tag="h3"><FormattedMessage id="ui-users.contact.contactInformation" /></Headline>}
+      label={<Headline size="large" tag="h3"><FormattedMessage id="ui-users.contact.contactInfo" /></Headline>}
     >
       <Row>
         <Col xs={12} md={3}>
@@ -84,15 +83,13 @@ const EditContactInfo = ({
         </Col>
         <Col xs={12} md={3}>
           <Field
-            label={(
-              <FormattedMessage id="ui-users.contact.preferredContact">
-                {(msg) => msg + ' *'}
-              </FormattedMessage>
-            )}
+            label={<FormattedMessage id="ui-users.contact.preferredContact" />}
             name="personal.preferredContactTypeId"
             id="adduser_preferredcontact"
             component={Select}
             fullWidth
+            aria-required="true"
+            required
           >
             <FormattedMessage id="ui-users.contact.selectContactType">
               {(message) => <option value="">{message}</option>}
@@ -113,7 +110,7 @@ EditContactInfo.propTypes = {
   accordionId: PropTypes.string.isRequired,
   addressTypes: PropTypes.arrayOf(PropTypes.object),
   preferredContactTypeId: PropTypes.string,
-  intl: intlShape.isRequired,
+  intl: PropTypes.object.isRequired,
 };
 
 export default injectIntl(EditContactInfo);

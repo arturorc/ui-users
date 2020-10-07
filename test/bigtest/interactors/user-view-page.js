@@ -5,16 +5,15 @@ import {
   isPresent,
   scoped,
   count,
+  collection,
+  ButtonInteractor,
 } from '@bigtest/interactor';
 
 import proxyItemCSS from '../../../src/components/ProxyGroup/ProxyItem/ProxyItem.css';
 
-@interactor class HeaderDropdown {
-  click = clickable('button');
-}
-
-@interactor class HeaderDropdownMenu {
-  clickEdit = clickable('[data-test-user-instance-edit-action]');
+@interactor class AccordionSection {
+  keyValues = collection('[data-test-kv-value]');
+  click = clickable();
 }
 
 @interactor class ProxySectionInteractor {
@@ -22,13 +21,40 @@ import proxyItemCSS from '../../../src/components/ProxyGroup/ProxyItem/ProxyItem
   sponsorCount = count(`[data-test="sponsors"] .${proxyItemCSS.item}`);
 }
 
+@interactor class LoansSectionInteractor {
+  accordionButton = scoped('#accordion-toggle-button-loansSection', ButtonInteractor);
+  openLoans = scoped('#clickable-viewcurrentloans', ButtonInteractor);
+  closedLoans = scoped('#clickable-viewclosedloans', ButtonInteractor);
+  claimedReturnedCount = text('#claimed-returned-count');
+
+  whenLoaded() {
+    return this.when(() => this.isPresent).timeout(5000);
+  }
+}
+
+@interactor class CustomFieldsSectionInteractor {
+  accordionButton = scoped('#accordion-toggle-button-customfields', ButtonInteractor);
+  label = text('[class*="labelArea---"]');
+}
+
 @interactor class InstanceViewPage {
   title = text('[data-test-header-title]');
-  headerDropdown = new HeaderDropdown('[class*=paneHeaderCenterInner---] [class*=dropdown---]');
-  headerDropdownMenu = new HeaderDropdownMenu();
+  // headerDropdown = new HeaderDropdown();
+  // headerDropdownMenu = new HeaderDropdownMenu();
   editButtonPresent = isPresent('#clickable-edituser');
   clickEditButton = clickable('#clickable-edituser');
   proxySection = scoped('#proxySection', ProxySectionInteractor);
+  loansSection = scoped('#loansSection', LoansSectionInteractor);
+  holdShelf = text('[data-test-hold-shelf]');
+  delivery = text('[data-test-delivery]');
+  fulfillmentPreference = text('[data-test-fulfillment-preference]');
+  defaultPickupServicePoint = text('[data-test-default-pickup-service-point]');
+  defaultDeliveryAddress = text('[data-test-default-delivery-address]');
+  customFieldsSection = scoped('#customFields', CustomFieldsSectionInteractor);
+  userInfo = new AccordionSection('#userInformationSection');
+  contactInfo = new AccordionSection('#contactInfoSection');
+  departmentName = text('[data-test-department-name]');
+
   whenLoaded() {
     return this.when(() => this.isPresent).timeout(5000);
   }

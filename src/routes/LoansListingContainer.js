@@ -1,8 +1,14 @@
 import React from 'react';
-import _get from 'lodash/get';
+import PropTypes from 'prop-types';
+import {
+  get,
+  concat,
+} from 'lodash';
+
 import { stripesConnect } from '@folio/stripes/core';
+import { LoadingView } from '@folio/stripes/components';
+
 import { LoansListing } from '../views';
-import ViewLoading from '../components/Loading/ViewLoading';
 
 class LoansListingContainer extends React.Component {
   static manifest = Object.freeze({
@@ -21,15 +27,19 @@ class LoansListingContainer extends React.Component {
       path: 'groups',
       params: {
         query: 'cql.allRecords=1 sortby group',
-        limit: '40',
+        limit: '200',
       },
       records: 'usergroups',
     },
     loansHistory: {
       type: 'okapi',
       records: 'loans',
-      path: 'circulation/loans?query=(userId=:{id}) sortby id&limit=100000',
+      path: 'circulation/loans?query=(userId==:{id}) sortby id&limit=100000',
       permissionsRequired: 'circulation.loans.collection.get',
+      shouldRefresh: (_, action, refresh) => {
+        const { path } = action.meta;
+        return refresh || (path && path.match(/loan-anonymization/));
+      },
     },
     loanPolicies: {
       type: 'okapi',
@@ -38,11 +48,17 @@ class LoansListingContainer extends React.Component {
       accumulate: 'true',
       fetch: false,
     },
-    hasPatronBlocks: {
+    hasManualPatronBlocks: {
       type: 'okapi',
       records: 'manualblocks',
-      path: 'manualblocks?query=(userId=:{id})&limit=100',
+      path: 'manualblocks?query=(userId==:{id})&limit=100',
       permissionsRequired: 'manualblocks.collection.get',
+    },
+    hasAutomatedPatronBlocks: {
+      type: 'okapi',
+      records: 'automatedPatronBlocks',
+      path: 'automated-patron-blocks/:{id}?limit=100',
+      permissionsRequired: 'automated-patron-blocks.collection.get',
     },
     requests: {
       type: 'okapi',
@@ -55,7 +71,7 @@ class LoansListingContainer extends React.Component {
     loanAccount: {
       type: 'okapi',
       records: 'accounts',
-      path: 'accounts?query=userId=:{id}&limit=100',
+      path: 'accounts?query=userId==:{id}&limit=10000',
     },
     renew: {
       fetch: false,
@@ -75,6 +91,22 @@ class LoansListingContainer extends React.Component {
     },
     activeRecord: {},
   });
+
+  static propTypes = {
+    resources: PropTypes.shape({
+      patronGroups: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      selUser: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+    }),
+    match: PropTypes.shape({
+      params: PropTypes.shape({
+        id: PropTypes.string,
+      })
+    }),
+  }
 
   getUser = () => {
     const { resources, match: { params: { id } } } = this.props;
@@ -98,10 +130,12 @@ class LoansListingContainer extends React.Component {
     const { resources } = this.props;
     const user = this.getUser();
     const patronGroup = this.getPatronGroup();
-    const loansHistory = _get(resources, ['loansHistory', 'records'], []);
-    const patronBlocks = _get(resources, ['hasPatronBlocks', 'records'], []);
+    const loansHistory = get(resources, ['loansHistory', 'records'], []);
+    const manualPatronBlocks = get(resources, ['hasManualPatronBlocks', 'records'], []);
+    const automatedPatronBlocks = get(resources, ['hasAutomatedPatronBlocks', 'records'], []);
+    const patronBlocks = concat(automatedPatronBlocks, manualPatronBlocks);
 
-    if (!user) return (<ViewLoading defaultWidth="100%" paneTitle="Loading loans" />);
+    if (!user) return (<LoadingView defaultWidth="100%" paneTitle="Loading loans" />);
     return (
       <LoansListing
         patronBlocks={patronBlocks}

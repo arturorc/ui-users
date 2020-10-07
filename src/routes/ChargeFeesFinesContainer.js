@@ -1,6 +1,5 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { compose } from 'redux';
 
 import {
   stripesConnect,
@@ -8,6 +7,7 @@ import {
 } from '@folio/stripes/core';
 
 import { ChargeFeeFine } from '../components/Accounts';
+import { MAX_RECORDS } from '../constants';
 
 class ChargeFeesFinesContainer extends React.Component {
   static manifest = Object.freeze({
@@ -28,6 +28,7 @@ class ChargeFeesFinesContainer extends React.Component {
         return loanId ? `loan-storage/loans/${loanId}` : null;
       },
       clear: false,
+      resourceShouldRefresh: true,
       shouldRefresh: (resource, action, refresh) => {
         const { path } = action.meta;
         return refresh || (path && path.match(/link/));
@@ -35,7 +36,7 @@ class ChargeFeesFinesContainer extends React.Component {
     },
     loanItem: {
       type: 'okapi',
-      // path: 'inventory/items/%{activeRecord.itemId}'
+      resourceShouldRefresh: true,
       path: (_q, _p, _r, _l, props) => {
         const { resources: { loan, activeRecord } } = props;
         if ((activeRecord && activeRecord.itemId) || (loan && loan.records.length > 0)) {
@@ -43,16 +44,17 @@ class ChargeFeesFinesContainer extends React.Component {
           return itemId ? `inventory/items/${itemId}` : null;
         }
         return null;
-      }
+      },
     },
     curUserServicePoint: {
       type: 'okapi',
-      path: 'service-points-users?query=(userId==:{id})',
+      path: `service-points-users?query=(userId==:{id})&limit=${MAX_RECORDS}`,
       records: 'servicePointsUsers',
     },
     items: {
       type: 'okapi',
       records: 'items',
+      resourceShouldRefresh: true,
       path: (_q, _p, _r, _l, props) => {
         const { resources: { loanItem, activeRecord } } = props;
         if ((activeRecord && activeRecord.barcode) || (loanItem && loanItem.records.length > 0)) {
@@ -66,13 +68,13 @@ class ChargeFeesFinesContainer extends React.Component {
       type: 'okapi',
       records: 'feefines',
       GET: {
-        path: 'feefines?query=(ownerId=%{activeRecord.ownerId} or ownerId=%{activeRecord.shared})&limit=100',
+        path: `feefines?query=(ownerId==%{activeRecord.ownerId} or ownerId==%{activeRecord.shared})&limit=${MAX_RECORDS}`,
       },
     },
     feefineactions: {
       type: 'okapi',
       records: 'feefineactions',
-      path: 'feefineactions',
+      path: `feefineactions?limit=${MAX_RECORDS}`,
     },
     accounts: {
       type: 'okapi',
@@ -86,27 +88,34 @@ class ChargeFeesFinesContainer extends React.Component {
       type: 'okapi',
       resource: 'accounts',
       accumulate: 'true',
-      path: 'accounts',
+      path: `accounts?limit=${MAX_RECORDS}`,
     },
     owners: {
       type: 'okapi',
       records: 'owners',
-      path: 'owners?limit=100',
+      path: 'owners?limit=2000',
     },
     payments: {
       type: 'okapi',
       records: 'payments',
-      path: 'payments',
+      path: `payments?limit=${MAX_RECORDS}`,
     },
     commentRequired: {
       type: 'okapi',
       records: 'comments',
-      path: 'comments',
+      path: `comments?limit=${MAX_RECORDS}`,
     },
     allfeefines: {
       type: 'okapi',
       records: 'feefines',
-      path: 'feefines?limit=100',
+      path: `feefines?limit=${MAX_RECORDS}`,
+    },
+    pay: {
+      type: 'okapi',
+      path: 'accounts/%{activeRecord.id}/pay',
+      fetch: false,
+      accumulate: 'true',
+      clientGeneratePk: false,
     },
     activeRecord: {},
   });
@@ -120,6 +129,12 @@ class ChargeFeesFinesContainer extends React.Component {
         records: PropTypes.arrayOf(PropTypes.object),
       }),
       owners: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      loan: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      loanItem: PropTypes.shape({
         records: PropTypes.arrayOf(PropTypes.object),
       }),
       activeRecord: PropTypes.object,
@@ -138,12 +153,21 @@ class ChargeFeesFinesContainer extends React.Component {
       account: PropTypes.shape({
         GET: PropTypes.func,
       }),
+      pay: PropTypes.shape({
+        POST: PropTypes.func.isRequired,
+      }),
     }).isRequired,
     stripes: PropTypes.object.isRequired,
     okapi: PropTypes.object,
     initialize: PropTypes.func,
     servicePointsIds: PropTypes.arrayOf(PropTypes.string),
     defaultServicePointId: PropTypes.string,
+    match: PropTypes.shape({
+      params: PropTypes.shape({
+        id: PropTypes.string,
+        loanid: PropTypes.string,
+      })
+    }),
   };
 
   getLoan = () => {
@@ -171,7 +195,4 @@ class ChargeFeesFinesContainer extends React.Component {
   }
 }
 
-export default compose(
-  stripesConnect,
-  withStripes,
-)(ChargeFeesFinesContainer);
+export default stripesConnect(withStripes(ChargeFeesFinesContainer));

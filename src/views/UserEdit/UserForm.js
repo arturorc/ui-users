@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import moment from 'moment';
 import { FormattedMessage } from 'react-intl';
 import { get } from 'lodash';
+import { Field } from 'redux-form';
 
 import { AppIcon } from '@folio/stripes/core';
 import {
@@ -18,9 +19,10 @@ import {
   Row,
   Col,
   Headline,
-  HasCommand,
   AccordionSet,
+  HasCommand,
 } from '@folio/stripes/components';
+import { EditCustomFieldsRecord } from '@folio/stripes/smart-components';
 import stripesForm from '@folio/stripes/form';
 
 import {
@@ -209,17 +211,19 @@ class UserForm extends React.Component {
       reset: PropTypes.func.isRequired,
       GET: PropTypes.func.isRequired,
     }).isRequired,
+    match: PropTypes.object,
     pristine: PropTypes.bool,
     submitting: PropTypes.bool,
     invalid: PropTypes.bool,
+    onCancel: PropTypes.func.isRequired,
     onSubmit: PropTypes.func.isRequired,
     initialValues: PropTypes.object.isRequired,
+    servicePoints: PropTypes.object.isRequired,
   };
 
   static defaultProps = {
     pristine: false,
     submitting: false,
-    invalid: false,
   };
 
   constructor(props) {
@@ -233,6 +237,7 @@ class UserForm extends React.Component {
         proxyAccordion: false,
         permissions: false,
         servicePoints: false,
+        customFields: true,
       },
     };
 
@@ -267,7 +272,24 @@ class UserForm extends React.Component {
   }
 
   handleCancel = () => {
-    this.props.history.goBack();
+    const {
+      match: {
+        params
+      },
+      location: {
+        search,
+      },
+      history
+    } = this.props;
+
+    const idParam = params.id || '';
+    if (idParam) {
+      // if an id param is present, it's an edit view, go back to the user detail page...
+      history.push(`/users/preview/${idParam}${search}`);
+    } else {
+      // if no id param, it's a create form, go back to the top level search view.
+      history.push(`/users/${search}`);
+    }
   }
 
   getAddFirstMenu() {
@@ -279,7 +301,7 @@ class UserForm extends React.Component {
               id="clickable-closenewuserdialog"
               onClick={this.handleCancel}
               ref={this.closeButton}
-              ariaLabel={ariaLabel}
+              aria-label={ariaLabel}
               icon="times"
             />
           )}
@@ -353,11 +375,10 @@ class UserForm extends React.Component {
     const {
       pristine,
       submitting,
-      invalid,
       onCancel,
     } = this.props;
 
-    const disabled = pristine || submitting || invalid;
+    const disabled = pristine || submitting;
 
     const startButton = (
       <Button
@@ -403,6 +424,7 @@ class UserForm extends React.Component {
       formData,
       change, // from redux-form...
       servicePoints,
+      onCancel,
     } = this.props;
 
     const { sections } = this.state;
@@ -410,7 +432,7 @@ class UserForm extends React.Component {
     const footer = this.getPaneFooter();
     const fullName = getFullName(initialValues);
     const paneTitle = initialValues.id
-      ? fullName
+      ? <FormattedMessage id="ui-users.edit" />
       : <FormattedMessage id="ui-users.crud.createUser" />;
 
     return (
@@ -423,101 +445,112 @@ class UserForm extends React.Component {
         >
           <Paneset>
             <Pane
-              defaultWidth="100%"
               firstMenu={firstMenu}
               footer={footer}
+              centerContent
               appIcon={<AppIcon app="users" appIconKey="users" />}
               paneTitle={
                 <span data-test-header-title>
                   {paneTitle}
                 </span>
               }
+              onClose={onCancel}
             >
-              <div className={css.UserFormContent}>
-                <Headline
-                  size="xx-large"
-                  tag="h2"
-                  data-test-header-title
-                >
-                  {fullName}
-                </Headline>
-                <Row end="xs">
-                  <Col xs>
-                    <ExpandAllButton
-                      accordionStatus={sections}
-                      onToggle={this.handleExpandAll}
+              <Headline
+                size="xx-large"
+                tag="h2"
+                data-test-header-title
+              >
+                {fullName}
+              </Headline>
+              <Row end="xs">
+                <Col xs>
+                  <ExpandAllButton
+                    accordionStatus={sections}
+                    onToggle={this.handleExpandAll}
+                  />
+                </Col>
+              </Row>
+              <AccordionSet>
+                <EditUserInfo
+                  accordionId="editUserInfo"
+                  expanded={sections.editUserInfo}
+                  onToggle={this.handleSectionToggle}
+                  initialValues={initialValues}
+                  patronGroups={formData.patronGroups}
+                />
+                <EditExtendedInfo
+                  accordionId="extendedInfo"
+                  expanded={sections.extendedInfo}
+                  onToggle={this.handleSectionToggle}
+                  userId={initialValues.id}
+                  userFirstName={initialValues.personal.firstName}
+                  userEmail={initialValues.personal.email}
+                  username={initialValues.username}
+                  servicePoints={servicePoints}
+                  addressTypes={formData.addressTypes}
+                  departments={formData.departments}
+                />
+                <EditContactInfo
+                  accordionId="contactInfo"
+                  expanded={sections.contactInfo}
+                  onToggle={this.handleSectionToggle}
+                  addressTypes={formData.addressTypes}
+                  preferredContactTypeId={initialValues.preferredContactTypeId}
+                />
+                <EditCustomFieldsRecord
+                  formName="userForm"
+                  isReduxForm
+                  accordionId="customFields"
+                  onToggle={this.handleSectionToggle}
+                  expanded={sections.customFields}
+                  backendModuleName="users"
+                  entityType="user"
+                  fieldComponent={Field}
+                />
+                {initialValues.id &&
+                  <div>
+                    <EditProxy
+                      accordionId="proxyAccordion"
+                      expanded={sections.proxy}
+                      onToggle={this.handleSectionToggle}
+                      sponsors={initialValues.sponsors}
+                      proxies={initialValues.proxies}
+                      fullName={fullName}
+                      change={change}
+                      initialValues={initialValues}
+                      getWarning={getProxySponsorWarning}
                     />
-                  </Col>
-                </Row>
-                <AccordionSet>
-                  <EditUserInfo
-                    accordionId="editUserInfo"
-                    expanded={sections.editUserInfo}
-                    onToggle={this.handleSectionToggle}
-                    initialValues={initialValues}
-                    patronGroups={formData.patronGroups}
-                  />
-                  <EditExtendedInfo
-                    accordionId="extendedInfo"
-                    expanded={sections.extendedInfo}
-                    onToggle={this.handleSectionToggle}
-                    userId={initialValues.id}
-                    userFirstName={initialValues.personal.firstName}
-                    userEmail={initialValues.personal.email}
-                    servicePoints={servicePoints}
-                    addressTypes={formData.addressTypes}
-                  />
-                  <EditContactInfo
-                    accordionId="contactInfo"
-                    expanded={sections.contactInfo}
-                    onToggle={this.handleSectionToggle}
-                    addressTypes={formData.addressTypes}
-                    preferredContactTypeId={initialValues.preferredContactTypeId}
-                  />
-                  {initialValues.id &&
-                    <div>
-                      <EditProxy
-                        accordionId="proxyAccordion"
-                        expanded={sections.proxy}
-                        onToggle={this.handleSectionToggle}
-                        sponsors={initialValues.sponsors}
-                        proxies={initialValues.proxies}
-                        fullName={fullName}
-                        change={change}
-                        initialValues={initialValues}
-                        getWarning={getProxySponsorWarning}
-                      />
-                      <PermissionsAccordion
-                        filtersConfig={[
-                          permissionTypeFilterConfig,
-                          statusFilterConfig,
-                        ]}
-                        visibleColumns={[
-                          'selected',
-                          'permissionName',
-                          'type',
-                          'status',
-                        ]}
-                        accordionId="permissions"
-                        expanded={sections.permissions}
-                        onToggle={this.handleSectionToggle}
-                        headlineContent={<FormattedMessage id="ui-users.permissions.userPermissions" />}
-                        permToRead="perms.permissions.get"
-                        permToDelete="perms.permissions.item.delete"
-                        permToModify="perms.permissions.item.put"
-                        formName="userForm"
-                        permissionsField="permissions"
-                      />
-                      <EditServicePoints
-                        accordionId="servicePoints"
-                        expanded={sections.servicePoints}
-                        onToggle={this.handleSectionToggle}
-                        {...this.props}
-                      />
-                    </div>
-                  }
-                </AccordionSet>
-              </div>
+                    <PermissionsAccordion
+                      filtersConfig={[
+                        permissionTypeFilterConfig,
+                        statusFilterConfig,
+                      ]}
+                      visibleColumns={[
+                        'selected',
+                        'permissionName',
+                        'type',
+                        'status',
+                      ]}
+                      accordionId="permissions"
+                      expanded={sections.permissions}
+                      onToggle={this.handleSectionToggle}
+                      headlineContent={<FormattedMessage id="ui-users.permissions.userPermissions" />}
+                      permToRead="perms.users.get"
+                      permToDelete="perms.users.item.delete"
+                      permToModify="perms.users.item.put"
+                      formName="userForm"
+                      permissionsField="permissions"
+                    />
+                    <EditServicePoints
+                      accordionId="servicePoints"
+                      expanded={sections.servicePoints}
+                      onToggle={this.handleSectionToggle}
+                      {...this.props}
+                    />
+                  </div>
+                }
+              </AccordionSet>
             </Pane>
           </Paneset>
         </form>

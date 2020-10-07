@@ -4,6 +4,10 @@
   min-height: 50vh;
 }
 
+.modalHeader {
+  background-color: #fff;
+}
+
 .modalFooter {
   width: 100%;
   display: flex;
@@ -22,7 +26,7 @@
 }
 
 .searchGroupWrap {
-  margin-bottom: .5rem;
+  margin-bottom: calc(var(--control-margin-bottom) / 2);
 }
 
 .cancelButton {

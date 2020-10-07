@@ -18,14 +18,39 @@ export default function config() {
         { id: 'loan-policy-storage', version: '7.4' },
       ]
     },
+    {
+      id: 'mod-users-16.0.1-SNAPSHOT.121',
+      name: 'users',
+      provides: []
+    },
+    {
+      id: 'mod-feesfines-15.8.0-SNAPSHOT.73',
+      name: 'feesfines',
+      provides: [{
+        id: 'feesfines',
+        version: '15.2',
+      }]
+    }
   ]);
 
   this.get('/saml/check', {
     ssoEnabled: false
   });
 
-  this.get('/configurations/entries', {
-    configs: []
+  this.get('/configurations/entries', (schema, request) => {
+    if (request.url.includes('custom_fields_label')) {
+      return {
+        configs: [{
+          id: 'tested-custom-field-label',
+          module: 'USERS',
+          configName: 'custom_fields_label',
+          enabled: true,
+          value: 'Custom Fields Test',
+        }],
+      };
+    }
+
+    return { configs: [] };
   });
   this.post('/bl-users/login', () => {
     return new Response(
@@ -141,8 +166,16 @@ export default function config() {
     return schema.users.find(request.params.id).attrs;
   });
 
-  this.put('/users/:id', (schema, request) => {
-    return schema.users.find(request.params.id).attrs;
+  this.put('/users/:id', (schema, { params, requestBody }) => {
+    const data = JSON.parse(requestBody);
+    // The active field is not converted to boolean correctly
+    // So we do it here manually
+    data.active = (data.active === 'true');
+    const user = schema.users.find(params.id);
+
+    user.update(data);
+
+    return user.attrs;
   });
 
   this.get('/proxiesfor', {
@@ -191,6 +224,12 @@ export default function config() {
           field,
         }
       } = cqlParser;
+
+      if (query.match('claimedReturned')) {
+        return loans.where((loan) => {
+          return loan.action === 'claimedReturned';
+        });
+      }
 
       if (field === 'userId') {
         return loans.where((loan) => {
@@ -286,10 +325,16 @@ export default function config() {
 
   this.post('/accounts', function (schema, { requestBody }) {
     const acct = JSON.parse(requestBody);
-    return server.create('accounts', acct);
+    return server.create('account', acct);
   });
 
-  this.get('waives', {
+  this.put('/accounts/:id', ({ accounts }, { params, requestBody }) => {
+    const account = JSON.parse(requestBody);
+
+    return accounts.find(params.id).update(account);
+  });
+
+  this.get('/waives', {
     waivers: [],
     totalRecords: 0,
     resultInfo: {
@@ -298,7 +343,7 @@ export default function config() {
       diagnostics: [],
     },
   });
-  this.get('payments', {
+  this.get('/payments', {
     payments: [],
     totalRecords: 0,
     resultInfo: {
@@ -307,7 +352,7 @@ export default function config() {
       diagnostics: [],
     },
   });
-  this.get('comments', {
+  this.get('/comments', {
     comments: [],
     totalRecords: 0,
     resultInfo: {
@@ -316,7 +361,7 @@ export default function config() {
       diagnostics: [],
     },
   });
-  this.get('feefines', function ({ feefines }, request) {
+  this.get('/feefines', function ({ feefines }, request) {
     if (request.queryParams.query) {
       if (request.queryParams.query.includes('allRecords')) {
         return this.serializerOrRegistry.serialize(feefines.all());
@@ -333,7 +378,7 @@ export default function config() {
         }
       } = cqlParser;
 
-      if (left.field === 'ownerId' || right.field === 'ownerId') {
+      if (left?.field === 'ownerId' || right?.field === 'ownerId') {
         return feefines.where((feefine) => {
           return feefine.ownerId === left.term || feefine.ownerId === right.term;
         });
@@ -364,6 +409,13 @@ export default function config() {
   this.get('/perms/permissions', function ({ permissions }) {
     return this.serializerOrRegistry.serialize(permissions.all());
   });
+  this.post('/perms/users/:id/permissions', {
+    permissionNames: [],
+  });
+
+  this.post('/perms/users/:id/permissions?indexField=userId');
+
+  this.post('/circulation/loans/:loanId/declare-item-lost', []);
 
   this.get('/feefineactions', ({ feefineactions }) => {
     return this.serializerOrRegistry.serialize(feefineactions.all());
@@ -371,7 +423,7 @@ export default function config() {
 
   this.post('/feefineactions', (schema, { requestBody }) => {
     const ffAction = JSON.parse(requestBody);
-    return server.create('feefineactions', ffAction);
+    return server.create('feefineaction', ffAction);
   });
 
   this.get('/owners', ({ owners }) => {
@@ -489,4 +541,240 @@ export default function config() {
 
   this.get('/perms/users/:id', { id: 'test' });
   this.put('/perms/users/:id', { id: 'test' });
+
+  this.get('/request-preference-storage/request-preference', ({ requestPreferences }, request) => {
+    if (request.queryParams.query) {
+      const cqlParser = new CQLParser();
+      cqlParser.parse(request.queryParams.query);
+      return requestPreferences.where({
+        userId: cqlParser.tree.term
+      });
+    } else {
+      return [];
+    }
+  });
+
+  this.post('/request-preference-storage/request-preference');
+
+  this.get('/patron-block-conditions/:id', ({ patronBlockConditions }, request) => {
+    return patronBlockConditions.find(request.params.id).attrs;
+  });
+
+  this.put('/patron-block-conditions/:id', ({ patronBlockConditions }, request) => {
+    return patronBlockConditions.find(request.params.id).attrs;
+  });
+
+  this.post('/patron-block-conditions', (schema, { requestBody }) => {
+    const conditions = JSON.parse(requestBody);
+
+    return server.createList('patronBlockCondition', 6, conditions);
+  });
+
+  this.get('/patron-block-conditions', ({ patronBlockConditions }) => {
+    return this.serializerOrRegistry.serialize(patronBlockConditions.all());
+  });
+
+  this.get('/patron-block-limits/:id', ({ patronBlockLimits }, request) => {
+    return patronBlockLimits.find(request.params.id).attrs;
+  });
+
+  this.put('/patron-block-limits/:id', ({ patronBlockLimits }, request) => {
+    return patronBlockLimits.find(request.params.id).attrs;
+  });
+
+  this.delete('/patron-block-limits/:id', ({ patronBlockLimits }, request) => {
+    return patronBlockLimits.find(request.params.id).destroy();
+  });
+
+  this.post('/patron-block-limits', function (schema, { requestBody }) {
+    const limit = JSON.parse(requestBody);
+
+    return server.create('patron-block-limit', limit);
+  });
+
+  this.get('/patron-block-limits', ({ patronBlockLimits }) => {
+    return this.serializerOrRegistry.serialize(patronBlockLimits.all());
+  });
+
+  this.get('/custom-fields', {
+    'customFields': [{
+      'id': '1',
+      'name': 'Textbox 1',
+      'refId': 'textbox-1',
+      'type': 'TEXTBOX_SHORT',
+      'entityType': 'user',
+      'visible': true,
+      'required': true,
+      'order': 1,
+      'helpText': 'helpful text',
+    }, {
+      'id': '2',
+      'name': 'Textbox 2',
+      'refId': 'textbox-2',
+      'type': 'TEXTBOX_SHORT',
+      'entityType': 'user',
+      'visible': true,
+      'required': false,
+      'order': 2,
+      'helpText': '',
+    }, {
+      'id': '3',
+      'name': 'Textarea 3',
+      'refId': 'textarea-3',
+      'type': 'TEXTBOX_LONG',
+      'entityType': 'user',
+      'visible': false,
+      'required': false,
+      'order': 3,
+      'helpText': '',
+    }, {
+      'id': '4',
+      'name': 'Textarea 4',
+      'refId': 'textarea-4',
+      'type': 'TEXTBOX_LONG',
+      'entityType': 'user',
+      'visible': true,
+      'required': false,
+      'order': 4,
+      'helpText': 'help text',
+    }]
+  });
+
+  this.post('/authn/credentials', {});
+
+  this.get('/authn/credentials', (schema, request) => {
+    const url = new URL(request.url);
+    const cqlQuery = url.searchParams.get('query');
+
+    if (cqlQuery != null) {
+      const cqlParser = new CQLParser();
+      cqlParser.parse(cqlQuery);
+
+      if (cqlParser.tree.term) {
+        return schema.credentials.where({
+          userId: cqlParser.tree.term
+        });
+      }
+    }
+
+    return schema.credentials.all();
+  });
+
+  this.get('/automated-patron-blocks/:id', {
+    automatedPatronBlocks: [],
+    totalRecords: 0,
+  });
+
+  this.get('/departments', {
+    departments: [{
+      id: 'ce0e0d5b-b5f3-4ad5-bccb-49c0784298f5',
+      name: 'Test1',
+      code: 'test1',
+      usageNumber: 0,
+      metadata: {
+        createdDate: () => '2019-02-05T18:49:20.839+0000',
+        createdByUserId: () => 'ce0e0d5b-b5f3-4ad5-bccb-49c0784298fd',
+        updatedDate: () => '2019-02-05T18:49:20.839+0000',
+        updatedByUserId: () => 'ce0e0d5b-b5f3-4ad5-bccb-49c0784298fd'
+      },
+    },
+    {
+      id: 'ce0e0d5b-b5f3-4ad5-bccb-49c0784298f7',
+      name: 'Test2',
+      code: 'test2',
+      usageNumber: 1,
+      metadata: {
+        createdDate: () => '2019-02-05T18:49:20.839+0000',
+        createdByUserId: () => 'ce0e0d5b-b5f3-4ad5-bccb-49c0784298fd',
+        updatedDate: () => '2019-02-05T18:49:20.839+0000',
+        updatedByUserId: () => 'ce0e0d5b-b5f3-4ad5-bccb-49c0784298fd'
+      },
+    }]
+  });
+
+  this.post('/accounts/:id/check-pay', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: '500.00',
+      allowed: true,
+      remainingAmount: '0.00'
+    };
+  });
+
+  this.post('/accounts/:id/check-waive', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: '500.00',
+      allowed: true,
+      remainingAmount: '0.00'
+    };
+  });
+
+  this.post('/accounts/:id/check-transfer', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: '500.00',
+      allowed: true,
+      remainingAmount: '0.00'
+    };
+  });
+
+  this.post('/accounts/:id/check-refund', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: '100.00',
+      allowed: true,
+      remainingAmount: '0.00'
+    };
+  });
+
+  this.post('/accounts/:id/pay', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: account.amount
+    };
+  });
+
+  this.post('/accounts/:id/waive', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: account.amount
+    };
+  });
+
+  this.post('/accounts/:id/transfer', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: account.amount
+    };
+  });
+
+  this.post('/accounts/:id/refund', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return {
+      accountId: account.id,
+      amount: account.amount
+    };
+  });
+
+  this.post('/accounts/:id/cancel', ({ accounts }, request) => {
+    const account = accounts.find(request.params.id).attrs;
+
+    return { accountId: account.id };
+  });
 }

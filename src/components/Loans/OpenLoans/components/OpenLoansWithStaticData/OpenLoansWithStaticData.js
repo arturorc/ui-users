@@ -6,7 +6,6 @@ import {
 import PropTypes from 'prop-types';
 import {
   injectIntl,
-  intlShape,
 } from 'react-intl';
 
 import { stripesShape } from '@folio/stripes/core';
@@ -18,7 +17,7 @@ import getListDataFormatter from '../../helpers/getListDataFormatter';
 
 class OpenLoansWithStaticData extends React.Component {
   static propTypes = {
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     stripes: stripesShape.isRequired,
     user: PropTypes.shape({
       id: PropTypes.string.isRequired,
@@ -50,8 +49,17 @@ class OpenLoansWithStaticData extends React.Component {
     onClosePatronBlockedModal: PropTypes.func.isRequired,
     feeFineCount: PropTypes.func.isRequired,
     history: PropTypes.object,
+    location: PropTypes.object,
     match: PropTypes.object,
   };
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      showBulkClaimReturnedModal: false,
+    };
+  }
 
   setFormatters() {
     const {
@@ -188,6 +196,14 @@ class OpenLoansWithStaticData extends React.Component {
     return contributorsList;
   };
 
+  onClickOpenBulkClaimReturned = () => {
+    this.setState({ showBulkClaimReturnedModal: true });
+  }
+
+  onCancelBulkClaimReturned = () => {
+    this.setState({ showBulkClaimReturnedModal: false });
+  }
+
   render() {
     const {
       visibleColumns,
@@ -211,12 +227,13 @@ class OpenLoansWithStaticData extends React.Component {
       activeLoan,
       isLoanChecked,
     } = this.props;
+    const { showBulkClaimReturnedModal } = this.state;
 
     this.setFormatters();
     this.columnMapping = this.getColumnMapping();
 
     return (
-      <React.Fragment>
+      <>
         {!isEmpty(loans) &&
         <OpenLoansSubHeader
           loans={loans}
@@ -229,6 +246,7 @@ class OpenLoansWithStaticData extends React.Component {
           showChangeDueDateDialog={showChangeDueDateDialog}
           buildRecords={buildRecords}
           openPatronBlockedModal={openPatronBlockedModal}
+          openBulkClaimReturnedModal={this.onClickOpenBulkClaimReturned}
         />}
         <OpenLoans
           stripes={stripes}
@@ -242,6 +260,7 @@ class OpenLoansWithStaticData extends React.Component {
           sortOrder={this.sortOrder}
           possibleColumns={possibleColumns}
           history={this.props.history}
+          location={this.props.location}
           match={this.props.match}
         />
         <Modals
@@ -256,8 +275,11 @@ class OpenLoansWithStaticData extends React.Component {
           changeDueDateDialogOpen={changeDueDateDialogOpen}
           hideChangeDueDateDialog={hideChangeDueDateDialog}
           onClosePatronBlockedModal={onClosePatronBlockedModal}
+          showBulkClaimReturnedModal={showBulkClaimReturnedModal}
+          onBulkClaimReturnedCancel={this.onCancelBulkClaimReturned}
+          requestCounts={requestCounts}
         />
-      </React.Fragment>
+      </>
     );
   }
 }

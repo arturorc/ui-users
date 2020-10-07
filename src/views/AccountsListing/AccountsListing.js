@@ -2,7 +2,6 @@ import _ from 'lodash';
 import React from 'react';
 import {
   FormattedMessage,
-  intlShape,
   injectIntl,
 } from 'react-intl';
 import PropTypes from 'prop-types';
@@ -26,8 +25,14 @@ import {
 import css from './AccountsListing.css';
 
 import { getFullName } from '../../components/util';
-import { Actions } from '../../components/Accounts/Actions';
-import { count, handleFilterChange, handleFilterClear } from '../../components/Accounts/accountFunctions';
+import Actions from '../../components/Accounts/Actions/FeeFineActions';
+import {
+  calculateTotalPaymentAmount,
+  calculateOwedFeeFines,
+  count,
+  handleFilterChange,
+  handleFilterClear,
+} from '../../components/Accounts/accountFunctions';
 
 import {
   Menu,
@@ -104,10 +109,14 @@ class AccountsHistory extends React.Component {
     }),
     okapi: PropTypes.object,
     user: PropTypes.object,
+    currentUser: PropTypes.object,
     openAccounts: PropTypes.bool,
     patronGroup: PropTypes.object,
     mutator: PropTypes.shape({
       user: PropTypes.shape({
+        update: PropTypes.func.isRequired,
+      }),
+      query: PropTypes.shape({
         update: PropTypes.func.isRequired,
       }),
       activeRecord: PropTypes.object,
@@ -119,7 +128,7 @@ class AccountsHistory extends React.Component {
     loans: PropTypes.arrayOf(PropTypes.object),
     location: PropTypes.object,
     match: PropTypes.object,
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     num: PropTypes.number,
   };
 
@@ -147,8 +156,10 @@ class AccountsHistory extends React.Component {
         waiveMany: false,
         transferModal: false,
         transferMany: false,
-        refund: false,
         transfer: false,
+        refund: false,
+        refundModal: false,
+        refundMany: false,
       },
     };
 
@@ -156,7 +167,6 @@ class AccountsHistory extends React.Component {
     this.onChangeActions = this.onChangeActions.bind(this);
     this.onChangeSelected = this.onChangeSelected.bind(this);
     this.onChangeSelectedAccounts = this.onChangeSelectedAccounts.bind(this);
-    this.connectedViewFeesFines = props.stripes.connect(ViewFeesFines);
     this.connectedActions = props.stripes.connect(Actions);
 
     this.accounts = [];
@@ -249,8 +259,10 @@ class AccountsHistory extends React.Component {
         waiveMany: false,
         transferModal: false,
         transferMany: false,
-        refund: false,
         transfer: false,
+        refund: false,
+        refundModal: false,
+        refundMany: false,
       },
     });
   }
@@ -399,12 +411,12 @@ class AccountsHistory extends React.Component {
         <Dropdown
           open={this.state.toggleDropdownState}
           onToggle={this.onDropdownClick}
-          style={{ float: 'right', marginLeft: '20px' }}
+          className={css.dropDownStyle}
           group
           pullRight
         >
           <Button
-            id="select-columns"
+            data-test-select-columns
             data-role="toggle"
             bottomMargin0
           >
@@ -424,7 +436,7 @@ class AccountsHistory extends React.Component {
         <Col xs={2}>
           {firstMenu}
         </Col>
-        <Col style={{ display: 'flex', alignItems: 'center' }} xsOffset={2} xs={5}>
+        <Col className={css.buttonGroupWrap} xsOffset={2} xs={5}>
           <ButtonGroup
             fullWidth
           >
@@ -471,6 +483,15 @@ class AccountsHistory extends React.Component {
     });
     balance /= 100;
 
+    const totalPaidAmount = calculateTotalPaymentAmount(resources?.feefineshistory?.records);
+    const uncheckedAccounts = _.differenceWith(
+      resources?.feefineshistory?.records || [],
+      this.accounts || this.state.selectedAccounts,
+      (account, selectedAcctount) => (account.id === selectedAcctount.id)
+    );
+
+    const owedAmount = calculateOwedFeeFines(uncheckedAccounts);
+
     const outstandingBalance = userOwned
       ? parseFloat(balance || 0).toFixed(2)
       : '0.00';
@@ -483,9 +504,9 @@ class AccountsHistory extends React.Component {
           defaultWidth="100%"
           dismissible
           padContent={false}
-          onClose={() => { history.goBack(); }}
+          onClose={() => { history.push(`/users/preview/${params.id}`); }}
           paneTitle={(
-            <FormattedMessage id="ui-users.accounts.title">
+            <FormattedMessage id="ui-users.accounts.title.feeFine">
               {(title) => (
                 `${title} - ${getFullName(user)} ${patronGroup ? '(' + _.upperFirst(patronGroup.group) + ')' : ''}`
               )}
@@ -519,6 +540,7 @@ class AccountsHistory extends React.Component {
                 filters={filters}
                 balance={userOwned ? balance : 0}
                 selected={selected}
+                selectedAccounts={selectedAccounts}
                 actions={this.state.actions}
                 query={query}
                 onChangeActions={this.onChangeActions}
@@ -565,6 +587,8 @@ class AccountsHistory extends React.Component {
                 currentUser={currentUser}
                 accounts={this.accounts}
                 selectedAccounts={selectedAccounts}
+                totalPaidAmount={totalPaidAmount}
+                owedAmount={owedAmount}
                 onChangeSelectedAccounts={this.onChangeSelectedAccounts}
                 balance={balance}
                 handleEdit={this.handleEdit}

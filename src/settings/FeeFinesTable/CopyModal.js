@@ -3,7 +3,6 @@ import PropTypes from 'prop-types';
 import {
   FormattedMessage,
   injectIntl,
-  intlShape,
 } from 'react-intl';
 import { Field, reduxForm } from 'redux-form';
 
@@ -16,6 +15,8 @@ import {
   Modal,
   RadioButtonGroup,
 } from '@folio/stripes/components';
+
+import css from './FeeFinesTable.css';
 
 const validate = (type) => {
   const errors = {};
@@ -36,7 +37,7 @@ class CopyForm extends React.Component {
     onClose: PropTypes.func,
     initialize: PropTypes.func.isRequired,
     handleSubmit: PropTypes.func.isRequired,
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
   };
 
   constructor(props) {
@@ -73,7 +74,7 @@ class CopyForm extends React.Component {
           </Col>
           <Col>
             <Field
-              style={{ marginLeft: '10px', width: 120 }}
+              className={css.ownerIdField}
               name="ownerId"
               component={Select}
               dataOptions={options}

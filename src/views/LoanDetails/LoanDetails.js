@@ -3,10 +3,9 @@ import {
   FormattedMessage,
   FormattedTime,
   injectIntl,
-  intlShape,
 } from 'react-intl';
 import { compose } from 'redux';
-import Link from 'react-router-dom/Link';
+import { Link } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import {
   get,
@@ -25,8 +24,13 @@ import {
   KeyValue,
   Row,
   Col,
+  NoValue,
+  LoadingView,
+  Dropdown,
+  DropdownMenu,
 } from '@folio/stripes/components';
-import { IfPermission } from '@folio/stripes/core';
+import { IfPermission, stripesConnect } from '@folio/stripes/core';
+import { effectiveCallNumber } from '@folio/stripes/util';
 
 import PatronBlockModal from '../../components/PatronBlock/PatronBlockModal';
 import {
@@ -34,10 +38,15 @@ import {
   nav,
   getOpenRequestsPath,
 } from '../../components/util';
-import { withRenew } from '../../components/Wrappers';
+import { itemStatuses, loanActions } from '../../constants';
+import {
+  withRenew,
+  withDeclareLost,
+  withClaimReturned,
+  withMarkAsMissing,
+} from '../../components/Wrappers';
 import loanActionMap from '../../components/data/static/loanActionMap';
 import LoanProxyDetails from './LoanProxyDetails';
-import ViewLoading from '../../components/Loading/ViewLoading';
 
 import css from './LoanDetails.css';
 
@@ -45,6 +54,7 @@ class LoanDetails extends React.Component {
   static propTypes = {
     stripes: PropTypes.object.isRequired,
     resources: PropTypes.shape({
+      loanAccountsActions: PropTypes.object,
       loanActions: PropTypes.object,
       loanActionsWithUser: PropTypes.object,
     }).isRequired,
@@ -58,6 +68,9 @@ class LoanDetails extends React.Component {
       userIds: PropTypes.shape({
         replace: PropTypes.func,
       }),
+      renewals: PropTypes.shape({
+        replace: PropTypes.func,
+      }),
     }).isRequired,
     loan: PropTypes.object,
     patronGroup: PropTypes.object,
@@ -66,37 +79,48 @@ class LoanDetails extends React.Component {
     loanPolicies: PropTypes.object,
     requestCounts: PropTypes.object,
     renew: PropTypes.func,
+    declareLost: PropTypes.func,
+    markAsMissing: PropTypes.func,
+    claimReturned: PropTypes.func,
+    enableButton: PropTypes.func,
+    declarationInProgress: PropTypes.bool,
     patronBlocks: PropTypes.arrayOf(PropTypes.object),
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
     match: PropTypes.object.isRequired,
     history: PropTypes.object.isRequired,
+    location: PropTypes.object.isRequired,
+  };
+
+  static defaultProps = {
+    enableButton: () => {},
   };
 
   constructor(props) {
     super(props);
     this.nav = null;
     this.connectedChangeDueDateDialog = props.stripes.connect(ChangeDueDateDialog);
-    this.renew = this.renew.bind(this);
     this.getContributorslist = this.getContributorslist.bind(this);
     this.showContributors = this.showContributors.bind(this);
     this.hideNonRenewedLoansModal = this.hideNonRenewedLoansModal.bind(this);
     this.showTitle = this.showTitle.bind(this);
     this.showChangeDueDateDialog = this.showChangeDueDateDialog.bind(this);
     this.hideChangeDueDateDialog = this.hideChangeDueDateDialog.bind(this);
-    this.getFeeFine = this.getFeeFine.bind(this);
     this.viewFeeFine = this.viewFeeFine.bind(this);
 
     this.state = {
       nonRenewedLoanItems: [],
       nonRenewedLoansModalOpen: false,
       changeDueDateDialogOpen: false,
-      feesFines: {},
       patronBlockedModal: false,
     };
   }
 
-  componentDidMount() {
-    this.getFeeFine();
+  componentDidUpdate(prevProps) {
+    const prevItemStatus = prevProps.loan?.item?.status?.name;
+    const thistItemStatus = this.props.loan?.item?.status?.name;
+    if (prevItemStatus && prevItemStatus !== thistItemStatus) {
+      this.props.enableButton();
+    }
   }
 
   getContributorslist(loan) {
@@ -112,47 +136,33 @@ class LoanDetails extends React.Component {
   }
 
   hideChangeDueDateDialog() {
-    this.setState({
-      changeDueDateDialogOpen: false,
-    });
-    this.props.mutator.modified.replace({ time: new Date().getTime() });
+    this.setState({ changeDueDateDialogOpen: false });
   }
 
   hideNonRenewedLoansModal() {
     this.setState({ nonRenewedLoansModalOpen: false });
   }
 
-  renew() {
+  renew = async () => {
     const {
       loan,
       user,
       patronBlocks,
       renew,
-      mutator: {
-        renewals
-      }
+      mutator: { renewals },
     } = this.props;
-    const countRenew = patronBlocks.filter(p => p.renewals);
+    const countRenew = patronBlocks.filter(p => p.renewals || p.blockRenewals);
 
     if (!isEmpty(countRenew)) return this.setState({ patronBlockedModal: true });
 
-    return renew([loan], user)
-      .then(renewals.replace({ ts: new Date().getTime() }));
-  }
-
-  getFeeFine() {
-    const { mutator, match: { params } } = this.props;
-    const query = `loanId=${params.loanid}`;
-
-    mutator.loanAccountsActions.GET({ params: { query } }).then(records => {
-      const total = records.reduce((a, { amount }) => (a + parseFloat(amount)), 0);
-      this.setState({ feesFines: { total, accounts: records } });
-    });
+    await renew([loan], user);
+    return renewals.replace({ ts: new Date().getTime() });
   }
 
   viewFeeFine() {
-    const { feesFines: { total } } = this.state;
-    const { stripes } = this.props;
+    const { stripes, resources } = this.props;
+    const records = resources?.loanAccountsActions?.records ?? [];
+    const total = records.reduce((acc, { amount }) => (acc + parseFloat(amount)), 0);
 
     if (total === 0) return '-';
 
@@ -172,13 +182,14 @@ class LoanDetails extends React.Component {
   }
 
   feefinedetails = (e) => {
-    const { history, match: { params } } = this.props;
-    const { feesFines: { accounts } } = this.state;
+    const { history, match: { params }, resources } = this.props;
+    const accounts = resources?.loanAccountsActions?.records ?? [];
     const loan = this.loan || {};
+
     if (accounts.length === 1) {
       nav.onClickViewAccountActionsHistory(e, { id: accounts[0].id }, history, params);
     } else if (accounts.length > 1) {
-      const open = accounts.filter(a => a.status.name === 'Open') || [];
+      const open = accounts.filter(a => a?.status?.name === 'Open') || [];
       if (open.length === accounts.length) {
         nav.onClickViewOpenAccounts(e, loan, history, params);
       } else if (open.length === 0) {
@@ -209,7 +220,7 @@ class LoanDetails extends React.Component {
     return (contributorsLength >= 77) ?
       (
         <Popover>
-          <div data-role="target" style={{ cursor: 'pointer' }}>
+          <div data-role="target" className={css.cursor}>
             {contributorsList}
           </div>
           <div data-role="popover">
@@ -251,18 +262,28 @@ class LoanDetails extends React.Component {
   }
 
   handleClose = () => {
-    const { loan, history, match: { params } } = this.props;
+    const {
+      loan,
+      history,
+      match: { params },
+      location,
+    } = this.props;
+
     // if this loan detail was accessed through a fee/fine, accountid will be present.
     if (params.accountid) {
       history.push(`/users/${params.id}/accounts/view/${params.accountid}`);
     }
-    const loanStatus = loan.status ? loan.status.name.toLowerCase() : 'open';
-    history.push(`/users/${params.id}/loans/${loanStatus}`);
+
+    const loanStatus = loan?.status ? loan.status?.name?.toLowerCase() : 'open';
+
+    history.push({
+      pathname: `/users/${params.id}/loans/${loanStatus}`,
+      state: location.state,
+    });
   }
 
   render() {
     const {
-      history,
       loan,
       patronGroup,
       patronBlocks,
@@ -272,6 +293,10 @@ class LoanDetails extends React.Component {
       intl,
       loanPolicies,
       requestCounts,
+      declareLost,
+      markAsMissing,
+      claimReturned,
+      declarationInProgress,
     } = this.props;
 
     const {
@@ -280,10 +305,10 @@ class LoanDetails extends React.Component {
 
     if (!loan || !user || (loan.userId !== user.id)) {
       return (
-        <ViewLoading
+        <LoadingView
           id="pane-loandetails"
           defaultWidth="100%"
-          paneTitle="Loan action history"
+          paneTitle={<FormattedMessage id="ui-users.loans.history" />}
         />
       );
     }
@@ -298,22 +323,46 @@ class LoanDetails extends React.Component {
 
     const { nonRenewedLoanItems } = this.state;
     const loanActionsFormatter = {
-      action: la => <FormattedMessage id={loanActionMap[la.action]} />,
+      action: la => <FormattedMessage id={loanActionMap[la.action] ?? loanActionMap.unknownAction} />,
       actionDate: la => <FormattedTime value={get(la, ['metadata', 'updatedDate'], '-')} day="numeric" month="numeric" year="numeric" />,
       dueDate: la => <FormattedTime value={la.dueDate} day="numeric" month="numeric" year="numeric" />,
       itemStatus: la => la.itemStatus,
-      source: la => <Link to={`/users/view/${la.user.id}`}>{getFullName(la.user)}</Link>,
+      source: la => {
+        return la.user ?
+          <Link to={`/users/view/${la.user?.id}`}>{getFullName(la.user)}</Link> :
+          <FormattedMessage id="ui-users.loans.action.source.system" />;
+      },
       comments: ({ actionComment }) => (actionComment || '-'),
     };
 
     const itemRequestCount = requestCounts[this.props.loan.itemId] || 0;
     const requestQueueValue = (itemRequestCount && stripes.hasPerm('ui-users.requests.all,ui-requests.all'))
-      ? (<Link to={getOpenRequestsPath(loan.item.barcode)}>{itemRequestCount}</Link>)
+      ? (<Link to={getOpenRequestsPath(loan.itemId)}>{itemRequestCount}</Link>)
       : itemRequestCount;
     const contributorsList = this.getContributorslist(loan);
     const contributorsListString = contributorsList.join(' ');
     const contributorsLength = contributorsListString.length;
     const loanStatus = get(loan, ['status', 'name'], '-');
+    const overduePolicyName = get(loan, ['overdueFinePolicy', 'name'], '-');
+    const lostItemPolicyName = get(loan, ['lostItemPolicy', 'name'], '-');
+    const itemStatus = get(loan, ['item', 'status', 'name'], '-');
+    const claimedReturnedDate = itemStatus === itemStatuses.CLAIMED_RETURNED && loan.claimedReturnedDate;
+    const isClaimedReturnedItem = itemStatus === itemStatuses.CLAIMED_RETURNED;
+    const isDeclaredLostItem = itemStatus === itemStatuses.DECLARED_LOST;
+    const isAgedToLostItem = itemStatus === itemStatuses.AGED_TO_LOST;
+    const isLostAndPaid = itemStatus === itemStatuses.LOST_AND_PAID;
+    let lostDate;
+    const declaredLostActions = loanActionsWithUser.filter(currentAction => get(currentAction, ['action'], '') === loanActions.DECLARED_LOST);
+    const agedTolostLostActions = loanActionsWithUser.filter(currentAction => get(currentAction, ['action'], '') === loanActions.AGED_TO_LOST);
+    const lostAndPaidActions = loanActionsWithUser.filter(currentAction => get(currentAction, ['action'], '') === loanActions.CLOSED_LOAN);
+    if (isDeclaredLostItem && declaredLostActions.length) {
+      lostDate = get(declaredLostActions[0], ['metadata', 'updatedDate']);
+    } else if (isAgedToLostItem && agedTolostLostActions.length) {
+      lostDate = get(agedTolostLostActions[0], ['metadata', 'updatedDate']);
+    } else if (isLostAndPaid) {
+      lostDate = get(lostAndPaidActions[0], ['declaredLostDate']);
+    }
+
     const buttonDisabled = (loanStatus && loanStatus === 'Closed');
     // Number of characters to truncate the string = 77
     const listTodisplay = (contributorsList === '-') ? '-' : (contributorsListString.length >= 77) ? `${contributorsListString.substring(0, 77)}...` : `${contributorsListString.substring(0, contributorsListString.length - 2)}`;
@@ -325,7 +374,7 @@ class LoanDetails extends React.Component {
           values={{
             strongCount: <strong>{nonRenewedLoanItems.length}</strong>,
             count: nonRenewedLoanItems.length,
-            verb: <strong>{<FormattedMessage id="ui-users.loans.item.nonRenewed.callout.verb" />}</strong>,
+            verb: <strong><FormattedMessage id="ui-users.loans.item.nonRenewed.callout.verb" /></strong>,
           }}
         />
       </p>
@@ -338,7 +387,7 @@ class LoanDetails extends React.Component {
             id="pane-loandetails"
             defaultWidth="100%"
             dismissible
-            onClose={() => { history.goBack(); }}
+            onClose={this.handleClose}
             paneTitle={(
               <FormattedMessage id="ui-users.loans.loanDetails">
                 {(loanDetails) => `${loanDetails} - ${getFullName(user)} (${upperFirst(patronGroup.group)})`}
@@ -349,20 +398,78 @@ class LoanDetails extends React.Component {
               <span>
                 <IfPermission perm="ui-users.loans.renew">
                   <Button
-                    disabled={buttonDisabled}
+                    data-test-renew-button
+                    disabled={buttonDisabled || isClaimedReturnedItem}
                     buttonStyle="primary"
                     onClick={this.renew}
                   >
                     <FormattedMessage id="ui-users.renew" />
                   </Button>
                 </IfPermission>
+                {isClaimedReturnedItem &&
+                  <Dropdown
+                    id="resolve-claim-menu"
+                    label={<FormattedMessage id="ui-users.loans.resolveClaim" />}
+                    buttonProps={{ buttonStyle: 'primary' }}
+                  >
+                    <DropdownMenu data-test-resolve-claim-dropdown data-role="menu">
+                      <IfPermission perm="ui-users.loans.declare-item-lost">
+                        <Button
+                          buttonStyle="dropdownItem"
+                          data-test-declare-lost-button
+                          disabled={buttonDisabled || isDeclaredLostItem}
+                          onClick={() => declareLost(loan)}
+                        >
+                          <FormattedMessage id="ui-users.loans.declareLost" />
+                        </Button>
+                      </IfPermission>
+                      <IfPermission perm="ui-users.loans.declare-claimed-returned-item-as-missing">
+                        <Button
+                          buttonStyle="dropdownItem"
+                          data-test-dropdown-content-mark-as-missing-button
+                          onClick={() => markAsMissing(loan)}
+                        >
+                          <FormattedMessage id="ui-users.loans.markAsMissing" />
+                        </Button>
+                      </IfPermission>
+                    </DropdownMenu>
+                  </Dropdown>
+                }
+                {!isClaimedReturnedItem &&
+                  <IfPermission perm="ui-users.loans.claim-item-returned">
+                    <Button
+                      data-test-claim-returned-button
+                      disabled={buttonDisabled}
+                      buttonStyle="primary"
+                      onClick={() => claimReturned(loan)}
+                    >
+                      <FormattedMessage id="ui-users.loans.claimReturned" />
+                    </Button>
+                  </IfPermission>
+                }
                 <IfPermission perm="ui-users.loans.edit">
                   <Button
-                    disabled={buttonDisabled}
+                    data-test-change-due-date-button
+                    disabled={
+                      buttonDisabled ||
+                      isDeclaredLostItem ||
+                      isClaimedReturnedItem ||
+                      isAgedToLostItem
+                    }
                     buttonStyle="primary"
                     onClick={this.showChangeDueDateDialog}
                   >
                     <FormattedMessage id="stripes-smart-components.cddd.changeDueDate" />
+                  </Button>
+                </IfPermission>
+                <IfPermission perm="ui-users.loans.declare-item-lost">
+                  <Button
+                    data-test-declare-lost-button
+                    disabled={declarationInProgress || buttonDisabled || isDeclaredLostItem}
+                    buttonStyle="primary"
+                    onClick={() => declareLost(loan)}
+                  >
+                    <FormattedMessage id="ui-users.loans.declareLost" />
                   </Button>
                 </IfPermission>
               </span>
@@ -395,8 +502,9 @@ class LoanDetails extends React.Component {
               </Col>
               <Col xs={2}>
                 <KeyValue
-                  label={<FormattedMessage id="ui-users.loans.details.callNumber" />}
-                  value={get(loan, ['item', 'callNumber'], '-')}
+                  data-test-effective-call-number
+                  label={<FormattedMessage id="ui-users.loans.details.effectiveCallNumber" />}
+                  value={effectiveCallNumber(loan)}
                 />
               </Col>
               <Col xs={2}>
@@ -405,12 +513,21 @@ class LoanDetails extends React.Component {
                   value={get(loan, ['item', 'location', 'name'], '-')}
                 />
               </Col>
-            </Row>
-            <Row>
               <Col xs={2}>
                 <KeyValue
+                  label={<FormattedMessage id="ui-users.loans.details.checkinServicePoint" />}
+                  value={get(loan, ['checkinServicePoint', 'name'], '-')}
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col
+                data-test-loan-actions-history-item-status
+                xs={2}
+              >
+                <KeyValue
                   label={<FormattedMessage id="ui-users.loans.columns.itemStatus" />}
-                  value={get(loan, ['item', 'status', 'name'], '-')}
+                  value={itemStatus}
                 />
               </Col>
               <Col xs={2}>
@@ -431,16 +548,23 @@ class LoanDetails extends React.Component {
                   value={get(loan, ['renewalCount'], '-')}
                 />
               </Col>
-              <Col xs={2}>
+              <Col
+                data-test-loan-claimed-returned
+                xs={2}
+              >
                 <KeyValue
                   label={<FormattedMessage id="ui-users.loans.details.claimedReturned" />}
-                  value="TODO"
+                  value={claimedReturnedDate ?
+                    (<FormattedTime value={claimedReturnedDate} day="numeric" month="numeric" year="numeric" />) :
+                    (<NoValue />)
+                  }
                 />
               </Col>
               <Col xs={2}>
                 <KeyValue
-                  label={<FormattedMessage id="ui-users.loans.details.checkinServicePoint" />}
-                  value={get(loan, ['checkinServicePoint', 'name'], '-')}
+                  data-test-overdue-policy
+                  label={<FormattedMessage id="ui-users.loans.details.overduePolicy" />}
+                  value={<Link to={`/settings/circulation/fine-policies/${loan.overdueFinePolicyId}`}>{overduePolicyName}</Link>}
                 />
               </Col>
             </Row>
@@ -473,10 +597,20 @@ class LoanDetails extends React.Component {
                   value={requestQueueValue}
                 />
               </Col>
-              <Col xs={2}>
+              <Col
+                data-test-loan-actions-history-lost
+                xs={2}
+              >
                 <KeyValue
                   label={<FormattedMessage id="ui-users.loans.details.lost" />}
-                  value="TODO"
+                  value={lostDate ? (<FormattedTime value={lostDate} day="numeric" month="numeric" year="numeric" />) : (<NoValue />)}
+                />
+              </Col>
+              <Col xs={2}>
+                <KeyValue
+                  data-test-lost-item-policy
+                  label={<FormattedMessage id="ui-users.loans.details.lostItemPolicy" />}
+                  value={<Link to={`/settings/circulation/lost-item-fee-policy/${loan.lostItemPolicyId}`}>{lostItemPolicyName}</Link>}
                 />
               </Col>
             </Row>
@@ -523,4 +657,8 @@ class LoanDetails extends React.Component {
 export default compose(
   injectIntl,
   withRenew,
+  withDeclareLost,
+  stripesConnect,
+  withClaimReturned,
+  withMarkAsMissing,
 )(LoanDetails);

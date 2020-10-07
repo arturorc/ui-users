@@ -2,14 +2,23 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
 import uuid from 'uuid';
+import { FormattedMessage } from 'react-intl';
 
-import { cloneDeep, omit, differenceBy, get } from 'lodash';
+import {
+  cloneDeep,
+  find,
+  omit,
+  get,
+  compact,
+} from 'lodash';
 
-import { eachPromise, getRecordObject } from '../../components/util';
+import { LoadingView } from '@folio/stripes/components';
+
+import { getRecordObject } from '../../components/util';
 
 import UserForm from './UserForm';
-import ViewLoading from '../../components/Loading/ViewLoading';
 import { toUserAddresses, getFormAddressList } from '../../components/data/converters/address';
+import contactTypes from '../../components/data/static/contactTypes';
 import { deliveryFulfillmentValues } from '../../constants';
 
 function resourcesLoaded(obj, exceptions = []) {
@@ -37,6 +46,7 @@ class UserEdit extends React.Component {
     stripes: PropTypes.object,
     resources: PropTypes.object,
     history: PropTypes.object,
+    location: PropTypes.object,
     match: PropTypes.object,
     updateProxies: PropTypes.func,
     updateSponsors: PropTypes.func,
@@ -69,8 +79,10 @@ class UserEdit extends React.Component {
     } = this.props;
 
     const initialFormValues = {
+      active: true,
       personal: {
         addresses: [],
+        preferredContactTypeId: (find(contactTypes, { 'name': 'email' }) || {}).id,
       },
       requestPreferences: {
         holdShelf: true,
@@ -88,6 +100,10 @@ class UserEdit extends React.Component {
       resources,
       'permissions',
     );
+
+    if (!userFormValues.personal) {
+      userFormValues.personal = {};
+    }
 
     userFormValues.personal.addresses = getFormAddressList(get(user, 'personal.addresses', []));
 
@@ -114,6 +130,7 @@ class UserEdit extends React.Component {
       'patronGroups',
       'addressTypes',
       'servicePoints',
+      'departments',
     );
 
     return formData;
@@ -146,39 +163,34 @@ class UserEdit extends React.Component {
     mutator.requestPreferences.PUT(payload);
   }
 
-  create = ({ requestPreferences, creds, ...userFormData }) => {
-    const { mutator, history } = this.props;
+  create = ({ requestPreferences, ...userFormData }) => {
+    const { mutator, history, location: { search } } = this.props;
     const userData = cloneDeep(userFormData);
-    const credentialsAreSet = userData.username;
     const user = { ...userData, id: uuid() };
     user.personal.addresses = toUserAddresses(user.personal.addresses);
+    user.personal.email = user.personal.email.trim();
+    user.departments = compact(user.departments);
 
-    if (credentialsAreSet) {
-      const credentials = {
-        password: '',
-        ...creds,
-        username: userData.username,
-      };
+    mutator.records.POST(user)
+      .then(() => {
+        this.createRequestPreferences(requestPreferences, user.id);
+        return mutator.perms.POST({ userId: user.id, permissions: [] });
+      })
+      .then(() => {
+        history.push(`/users/preview/${user.id}${search}`);
+      });
+  }
 
-      mutator.records.POST(user)
-        .then(() => mutator.creds.POST(Object.assign(credentials, { userId: user.id })))
-        .then(() => {
-          this.createRequestPreferences(requestPreferences, user.id);
-          return mutator.perms.POST({ userId: user.id, permissions: [] });
-        })
-        .then(() => {
-          history.push(`/users/preview/${user.id}`);
-        });
-    } else {
-      mutator.records.POST(user)
-        .then(() => {
-          this.createRequestPreferences(requestPreferences, user.id);
-          return mutator.perms.POST({ userId: user.id, permissions: [] });
-        })
-        .then(() => {
-          history.push(`/users/preview/${user.id}`);
-        });
-    }
+  formatCustomFieldsPayload(customFields) {
+    const copiedCustomFields = { ...customFields };
+
+    Object.keys(copiedCustomFields).forEach(customFieldId => {
+      if (!copiedCustomFields[customFieldId]) {
+        delete copiedCustomFields[customFieldId];
+      }
+    });
+
+    return copiedCustomFields;
   }
 
   update({ requestPreferences, ...userFormData }) {
@@ -189,10 +201,16 @@ class UserEdit extends React.Component {
       mutator,
       history,
       resources,
+      match: { params },
+      location: {
+        state,
+        search,
+      },
       stripes,
     } = this.props;
 
     const user = cloneDeep(userFormData);
+    const prevUser = resources?.selUser?.records?.[0] ?? {};
 
     if (get(resources, 'requestPreferences.records[0].totalRecords')) {
       this.updateRequestPreferences(requestPreferences);
@@ -201,6 +219,8 @@ class UserEdit extends React.Component {
     }
 
     user.personal.addresses = toUserAddresses(user.personal.addresses); // eslint-disable-line no-param-reassign
+    user.personal.email = user.personal.email.trim();
+    user.departments = compact(user.departments);
 
     const { proxies, sponsors, permissions, servicePoints, preferredServicePoint } = user;
 
@@ -210,7 +230,7 @@ class UserEdit extends React.Component {
     }
 
     if (permissions) {
-      this.updatePermissions(permissions);
+      this.updatePermissions(user.id, permissions);
     }
 
     if (servicePoints && stripes.hasPerm('inventory-storage.service-points-users.item.post,inventory-storage.service-points-users.item.put')) {
@@ -219,37 +239,91 @@ class UserEdit extends React.Component {
 
     const data = omit(user, ['creds', 'proxies', 'sponsors', 'permissions', 'servicePoints', 'preferredServicePoint']);
     const today = moment().endOf('day');
+    const curActive = user.active;
+    const prevActive = prevUser.active;
 
-    data.active = (moment(user.expirationDate).endOf('day').isSameOrAfter(today));
+    const formattedCustomFieldsPayload = this.formatCustomFieldsPayload(data.customFields);
+
+    data.customFields = formattedCustomFieldsPayload;
+
+    // if active has been changed manually on the form
+    // or if the expirationDate has been removed
+    if (curActive !== prevActive || !user.expirationDate) {
+      data.active = curActive;
+    } else {
+      data.active = (moment(user.expirationDate).endOf('day').isSameOrAfter(today));
+    }
 
     mutator.selUser.PUT(data).then(() => {
-      history.goBack();
+      history.push({
+        pathname: params.id ? `/users/preview/${params.id}` : '/users',
+        search,
+        state,
+      });
     });
   }
 
-  updatePermissions(perms) {
-    const mutator = this.props.mutator.permissions;
-    const prevPerms = (this.props.resources.permissions || {}).records || [];
-    const removedPerms = differenceBy(prevPerms, perms, 'id');
-    const addedPerms = differenceBy(perms, prevPerms, 'id');
-    eachPromise(addedPerms, mutator.POST);
-    eachPromise(removedPerms, mutator.DELETE);
+  async updatePermissions(userId, perms) {
+    const {
+      permissions: permissionsMutator,
+      perms: permUserMutator,
+      permUserId,
+    } = this.props.mutator;
+
+    const { perms: permUserRecords } = this.props.resources;
+    // the perms parameter is an array of permission objects, but the permissions API
+    // wants an array of permission names.
+    const permissionNames = Object.values(perms).map(p => p.permissionName);
+
+    // If the user record has never had any associated permissions, a user permissions
+    // record may not exist. The PUT operation will fail if that's the case; thus,
+    // if no record is found, one has to be created before we assign the permissions
+    // as the last step.
+    if (permUserRecords.records.length === 1) {
+      const record = permUserRecords.records[0];
+
+      // N.B. permUserId is the id of the *permissions user* record, not the regular
+      // user record!
+      permUserId.replace(record.id);
+      record.permissions = permissionNames;
+
+      // Currently there is a bug (https://issues.folio.org/browse/MODPERMS-100) that
+      // requires us to remove the metadata object before sending the request.
+      delete record.metadata;
+
+      permissionsMutator.PUT(record);
+    } else {
+      // Create a new permissions user record first
+      await permUserMutator.POST({ userId }).then(record => {
+        record.permissions = permissionNames;
+        permissionsMutator.PUT(record);
+      });
+    }
   }
 
   render() {
     const {
       history,
       resources,
-      match: { params }
+      location,
+      match: { params },
     } = this.props;
 
-    if (!resourcesLoaded(resources, ['uniquenessValidator'])) {
-      return <ViewLoading data-test-form-page paneTitle={params.id ? 'Edit User' : 'Create User'} defaultWidth="100%" />;
+    if (!resourcesLoaded(resources, ['uniquenessValidator']) || (!this.getUser() && this.props.match.params.id)) {
+      return (
+        <LoadingView
+          data-test-form-page
+          paneTitle={params.id ?
+            <FormattedMessage id="ui-users.edit" /> :
+            <FormattedMessage id="ui-users.crud.createUser" />
+          }
+          defaultWidth="100%"
+        />
+      );
     }
 
     // data is information that the form needs, mostly to populate options lists
     const formData = this.getUserFormData();
-
     const onSubmit = params.id ? (record) => this.update(record) : (record) => this.create(record);
 
     return (
@@ -257,8 +331,16 @@ class UserEdit extends React.Component {
         formData={formData}
         initialValues={this.getUserFormValues()} // values are strictly values...if we're editing (id param present) pull in existing values.
         onSubmit={onSubmit}
-        onCancel={() => history.goBack()}
+        onCancel={() => {
+          history.push({
+            pathname: params.id ? `/users/preview/${params.id}` : '/users',
+            state: location.state,
+          });
+        }}
         uniquenessValidator={this.props.mutator.uniquenessValidator}
+        match={this.props.match}
+        location={location}
+        history={history}
       />
     );
   }

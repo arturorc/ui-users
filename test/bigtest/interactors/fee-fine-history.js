@@ -6,12 +6,20 @@ import {
   text,
   isPresent,
   isVisible,
+  focusable,
+  blurrable,
+  selectable,
+  triggerable,
+  is,
 } from '@bigtest/interactor';
 import ButtonInteractor from '@folio/stripes-components/lib/Button/tests/interactor'; // eslint-disable-line
 import MultiColumnListInteractor from '@folio/stripes-components/lib/MultiColumnList/tests/interactor'; // eslint-disable-line
 import ModalInteractor from '@folio/stripes-components/lib/Modal/tests/interactor'; // eslint-disable-line
 import SearchFieldInteractor  from '@folio/stripes-components/lib/SearchField/tests/interactor'; // eslint-disable-line
 import CheckboxInteractor  from '@folio/stripes-components/lib/Checkbox/tests/interactor'; // eslint-disable-line
+import TextAreaInteractor from '@folio/stripes-components/lib/TextArea/tests/interactor'; // eslint-disable-line
+import ConfirmationModalInteractor from '@folio/stripes-components/lib/ConfirmationModal/tests/interactor'; // eslint-disable-line
+import CalloutInteractor from '@folio/stripes-components/lib/Callout/tests/interactor'; // eslint-disable-line
 
 @interactor class FeesFinesSection {
   click = clickable();
@@ -20,7 +28,7 @@ import CheckboxInteractor  from '@folio/stripes-components/lib/Checkbox/tests/in
 @interactor class CellInteractor {
   content = text();
   selectOne = clickable('input[type="checkbox"]');
-  selectEllipsis = clickable('#ellipsis-button');
+  selectEllipsis = clickable('[data-test-ellipsis-button]');
 }
 
 @interactor class RowInteractor {
@@ -33,10 +41,40 @@ import CheckboxInteractor  from '@folio/stripes-components/lib/Checkbox/tests/in
   selectAll = collection('[class*=mclHeader---]', { click: clickable() });
 }
 
+@interactor class InputFieldInteractor {
+  clickInput = clickable();
+  blurInput = blurrable();
+
+  pressTab = triggerable('keydown', {
+    bubbles: true,
+    cancelable: true,
+    keyCode: 9,
+    key: 'Tab',
+  });
+}
+
+@interactor class SelectFieldInteractor {
+  select = selectable();
+  focus = focusable();
+  blur = blurrable();
+  selectAndBlur(val) {
+    return this
+      .focus()
+      .timeout(5000)
+      .select(val)
+      .timeout(5000)
+      .blur()
+      .timeout(5000);
+  }
+
+  whenLoaded() {
+    return this.when(() => this.isPresent).timeout(5000);
+  }
+}
+
 @interactor class History {
   mclViewFeesFines = new MultiColumnListInteractor('#list-accounts-history-view-feesfines');
   mclAccountActions = new MultiColumnListInteractor('#list-accountactions');
-  sectionIsPresent = isPresent('#accordion-toggle-button-accountsSection');
   section = text('#accordion-toggle-button-accountsSection h3');
 
   title = text('[class*=paneTitleLabel---]');
@@ -55,13 +93,21 @@ import CheckboxInteractor  from '@folio/stripes-components/lib/Checkbox/tests/in
   allFeesFines = text('#clickable-viewallaccounts');
 
   accountActionIsPresent = isPresent('#paneHeaderpane-account-action-history-pane-title');
-  ellipsisMenuIsPresent = isPresent('#ellipsis-drop-down');
+  ellipsisMenuIsPresent = isPresent('#OverlayContainer #ellipsis-drop-down');
   loanDetailsIsPresent = isPresent('#pane-loandetails');
 
   payModal = new ModalInteractor('#payment-modal');
   waiveModal = new ModalInteractor('#waive-modal');
   cancelModal = new ModalInteractor('#error-modal');
   transferModal = new ModalInteractor('#transfer-modal');
+  actionModal = new ModalInteractor('[data-test-fee-fine-action-modal]');
+  actionModalSubmitButton = new ButtonInteractor('[data-test-fee-fine-action-modal] #submit-button');
+  actionModalSubmitButtonIsDisabled = is('[data-test-fee-fine-action-modal] #submit-button[disabled]');
+  actionModalAmountField = new InputFieldInteractor('input[name="amount"]');
+  actionModalSelect = new SelectFieldInteractor('select[id*="select-"]');
+  commentField = new TextAreaInteractor('[class*=textArea---]');
+  actionConfirmationModal = new ConfirmationModalInteractor();
+  callout = new CalloutInteractor();
 
   sectionFeesFinesSection = new FeesFinesSection('#accordion-toggle-button-accountsSection')
   openAccounts = new FeesFinesSection('#clickable-viewcurrentaccounts');
@@ -84,7 +130,7 @@ import CheckboxInteractor  from '@folio/stripes-components/lib/Checkbox/tests/in
   searchField = new SearchFieldInteractor('[class*=searchFieldWrap---]');
   checkList = collection('[class*=filterList---] [class*=listItem---]', CheckboxInteractor);
   col = new CheckboxInteractor('#column-item-0');
-  selectColumns = new ButtonInteractor('#select-columns');
+  selectColumns = new ButtonInteractor('[data-test-select-columns]');
 
   // file AccountsHistory
   openMenu = new ButtonInteractor('#open-accounts');

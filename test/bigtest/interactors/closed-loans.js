@@ -2,6 +2,7 @@ import {
   interactor,
   scoped,
   Interactor,
+  collection,
 } from '@bigtest/interactor';
 
 import ButtonInteractor from '@folio/stripes-components/lib/Button/tests/interactor'; // eslint-disable-line
@@ -14,6 +15,9 @@ import MultiColumnListInteractor from '@folio/stripes-components/lib/MultiColumn
   anonymizationFeesFinesErrorModal = new Interactor('#anonymization-fees-fines-modal');
   anonymizationConfirmButton = new ButtonInteractor('#anonymization-fees-fines-modal-footer button');
   list = scoped('#list-loanshistory', MultiColumnListInteractor);
+  rowButtons = collection('[data-test-closed-loans] [data-row-inner]', ButtonInteractor);
+  callNumbers = collection('[data-test-list-call-numbers]');
+  columnHeaders = collection('[role="columnheader"]');
 
   whenLoaded() {
     return this.when(() => this.list.isVisible);

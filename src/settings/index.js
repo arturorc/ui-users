@@ -1,4 +1,4 @@
-import React, { Component, Fragment } from 'react';
+import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 import { IfPermission } from '@folio/stripes/core';
@@ -10,7 +10,8 @@ import {
   Pane,
   PaneBackLink,
 } from '@folio/stripes/components';
-import { settingsSections } from '..';
+
+import sections from './sections';
 
 export default class Settings extends Component {
   static propTypes = {
@@ -22,7 +23,7 @@ export default class Settings extends Component {
     const { children, match: { path } } = this.props;
 
     return (
-      <Fragment>
+      <>
         <Pane
           defaultWidth="20%"
           paneTitle={
@@ -35,7 +36,7 @@ export default class Settings extends Component {
           )}
         >
           <NavList>
-            {settingsSections.map((section, index) => (
+            {sections.map((section, index) => (
               <NavListSection key={index} label={section.label}>
                 {section.pages.map(setting => (setting.perm ? (
                   <IfPermission key={setting.route} perm={setting.perm}>
@@ -49,7 +50,7 @@ export default class Settings extends Component {
           </NavList>
         </Pane>
         {children}
-      </Fragment>
+      </>
     );
   }
 }

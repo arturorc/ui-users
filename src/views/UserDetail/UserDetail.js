@@ -1,7 +1,11 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import get from 'lodash/get';
-import cloneDeep from 'lodash/cloneDeep';
+import {
+  get,
+  keyBy,
+  cloneDeep,
+  concat,
+} from 'lodash';
 import { FormattedMessage } from 'react-intl';
 import {
   AppIcon,
@@ -17,16 +21,17 @@ import {
   expandAllFunction,
   ExpandAllButton,
   Button,
-  Icon,
   Row,
   Col,
   Headline,
   AccordionSet,
+  LoadingPane,
   HasCommand,
 } from '@folio/stripes/components';
 
 import {
-  NotesSmartAccordion
+  NotesSmartAccordion,
+  ViewCustomFieldsRecord,
 } from '@folio/stripes/smart-components';
 
 import {
@@ -55,7 +60,7 @@ import {
   getFullName,
   // eachPromise
 } from '../../components/util';
-import { PaneLoading } from '../../components/Loading';
+import { departmentsShape } from '../../shapes';
 
 class UserDetail extends React.Component {
   static propTypes = {
@@ -70,6 +75,12 @@ class UserDetail extends React.Component {
     resources: PropTypes.shape({
       selUser: PropTypes.object,
       user: PropTypes.arrayOf(PropTypes.object),
+      addressTypes: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      departments: PropTypes.shape({
+        records: departmentsShape,
+      }),
       permissions: PropTypes.shape({
         records: PropTypes.arrayOf(PropTypes.object),
       }),
@@ -140,6 +151,7 @@ class UserDetail extends React.Component {
         permissionsSection: false,
         servicePointsSection: false,
         notesAccordion: false,
+        customFields: false,
       },
     };
   }
@@ -234,7 +246,12 @@ class UserDetail extends React.Component {
   };
 
   getEditLink = () => {
-    return `/users/${this.props.match.params.id}/edit/`;
+    const {
+      match: { params },
+      location: { search }
+    } = this.props;
+
+    return `/users/${params.id}/edit${search}`;
   }
 
   onClose = () => {
@@ -262,6 +279,23 @@ class UserDetail extends React.Component {
 
     return (
       <PaneMenu>
+        <IfPermission perm="ui-users.edit">
+          <FormattedMessage id="ui-users.crud.editUser">
+            {ariaLabel => (
+              user &&
+              <Button
+                id="clickable-edituser"
+                buttonStyle="primary"
+                to={this.getEditLink()}
+                buttonRef={this.editButton}
+                aria-label={ariaLabel}
+                marginBottom0
+              >
+                <FormattedMessage id="ui-users.edit" />
+              </Button>
+            )}
+          </FormattedMessage>
+        </IfPermission>
         {
           tagsEnabled &&
           <FormattedMessage id="ui-users.showTags">
@@ -271,43 +305,14 @@ class UserDetail extends React.Component {
                 id="clickable-show-tags"
                 onClick={() => { this.showHelperApp('tags'); }}
                 badgeCount={tags.length}
-                ariaLabel={ariaLabel}
+                aria-label={ariaLabel}
               />
             )}
           </FormattedMessage>
         }
-        <IfPermission perm="users.item.put">
-          <FormattedMessage id="ui-users.crud.editUser">
-            {ariaLabel => (
-              <IconButton
-                icon="edit"
-                id="clickable-edituser"
-                style={{ visibility: !user ? 'hidden' : 'visible' }}
-                href={this.getEditLink()}
-                ref={this.editButton}
-                ariaLabel={ariaLabel}
-              />
-            )}
-          </FormattedMessage>
-        </IfPermission>
       </PaneMenu>
     );
   }
-
-  getActionMenu = ({ onToggle }) => {
-    return (
-      <Button
-        data-test-user-instance-edit-action
-        buttonStyle="dropdownItem"
-        onClick={onToggle}
-        to={this.getEditLink()}
-      >
-        <Icon icon="edit">
-          <FormattedMessage id="ui-users.edit" />
-        </Icon>
-      </Button>
-    );
-  };
 
   checkScope = () => true;
 
@@ -331,6 +336,17 @@ class UserDetail extends React.Component {
     }
   ]
 
+  getAddressesList(addresses, addressTypes) {
+    const addressTypesById = keyBy(addressTypes, 'id');
+
+    return addresses.map(address => {
+      const addressTypeOption = addressTypesById[address.addressType];
+      const addressType = get(addressTypeOption, ['addressType']);
+
+      return { ...address, addressType };
+    });
+  }
+
   render() {
     const {
       resources,
@@ -351,15 +367,23 @@ class UserDetail extends React.Component {
 
     const addressTypes = (resources.addressTypes || {}).records || [];
     const addresses = getFormAddressList(get(user, 'personal.addresses', []));
+    const addressesList = this.getAddressesList(addresses, addressTypes);
     const permissions = (resources.permissions || {}).records || [];
     const settings = (resources.settings || {}).records || [];
     const sponsors = this.props.getSponsors();
     const proxies = this.props.getProxies();
     const servicePoints = this.props.getUserServicePoints();
     const preferredServicePoint = this.props.getPreferredServicePoint();
-    const hasPatronBlocks = (get(resources, ['hasPatronBlocks', 'isPending'], true)) ? -1 : 1;
-    const totalPatronBlocks = get(resources, ['hasPatronBlocks', 'other', 'totalRecords'], 0);
-    const patronBlocks = get(resources, ['hasPatronBlocks', 'records'], []);
+    const hasManualPatronBlocks = (get(resources, ['hasManualPatronBlocks', 'isPending'], true)) ? -1 : 1;
+    const hasAutomatedPatronBlocks = (get(resources, ['hasAutomatedPatronBlocks', 'isPending'], true)) ? -1 : 1;
+    const totalManualPatronBlocks = get(resources, ['hasManualPatronBlocks', 'other', 'totalRecords'], 0);
+    const totalAutomatedPatronBlocks = get(resources, ['hasAutomatedPatronBlocks', 'records'], []);
+    const totalPatronBlocks = totalManualPatronBlocks + totalAutomatedPatronBlocks.length;
+    const manualPatronBlocks = get(resources, ['hasManualPatronBlocks', 'records'], []);
+    const automatedPatronBlocks = get(resources, ['hasAutomatedPatronBlocks', 'records'], []);
+    const patronBlocks = concat(automatedPatronBlocks, manualPatronBlocks);
+    const hasPatronBlocks = (hasManualPatronBlocks === 1 || hasAutomatedPatronBlocks === 1) && totalPatronBlocks > 0;
+    const hasPatronBlocksPermissions = stripes.hasPerm('automated-patron-blocks.collection.get') || stripes.hasPerm('manualblocks.collection.get');
     const patronGroup = this.getPatronGroup(user);
     // const detailMenu = this.renderDetailMenu(user);
     const requestPreferences = get(resources, 'requestPreferences.records.[0].requestPreferences[0]', {});
@@ -374,10 +398,14 @@ class UserDetail extends React.Component {
       'addressType',
       '',
     );
+    const customFields = user?.customFields || [];
+    const departments = resources?.departments?.records || [];
+    const userDepartments = (user?.departments || [])
+      .map(departmentId => departments.find(({ id }) => id === departmentId)?.name);
 
     if (!user) {
       return (
-        <PaneLoading
+        <LoadingPane
           id="pane-userdetails"
           defaultWidth={paneWidth}
           paneTitle={<FormattedMessage id="ui-users.information.userDetails" />}
@@ -387,12 +415,12 @@ class UserDetail extends React.Component {
       );
     } else {
       return (
-        <React.Fragment>
-          <HasCommand
-            commands={this.shortcuts}
-            isWithinScope={this.checkScope}
-            scope={document.body}
-          >
+        <HasCommand
+          commands={this.shortcuts}
+          isWithinScope={this.checkScope}
+          scope={document.body}
+        >
+          <>
             <Pane
               data-test-instance-details
               id="pane-userdetails"
@@ -406,7 +434,6 @@ class UserDetail extends React.Component {
               lastMenu={this.renderDetailMenu(user)}
               dismissible
               onClose={this.onClose}
-              actionMenu={this.getActionMenu}
             >
               <TitleManager record={getFullName(user)} />
               <Headline
@@ -417,7 +444,7 @@ class UserDetail extends React.Component {
               </Headline>
               <Row>
                 <Col xs={10}>
-                  {(hasPatronBlocks === 1 && totalPatronBlocks > 0)
+                  {hasPatronBlocks
                     ? <PatronBlockMessage />
                     : ''}
                 </Col>
@@ -438,19 +465,22 @@ class UserDetail extends React.Component {
                   expanded={sections.userInformationSection}
                   onToggle={this.handleSectionToggle}
                 />
-                <IfPermission perm="manualblocks.collection.get">
-                  <PatronBlock
-                    accordionId="patronBlocksSection"
-                    user={user}
-                    hasPatronBlocks={(hasPatronBlocks === 1 && totalPatronBlocks > 0)}
-                    patronBlocks={patronBlocks}
-                    expanded={sections.patronBlocksSection}
-                    onToggle={this.handleSectionToggle}
-                    onClickViewPatronBlock={this.onClickViewPatronBlock}
-                    addRecord={this.state.addRecord}
-                    {...this.props}
-                  />
-                </IfPermission>
+                <IfInterface name="feesfines">
+                  {hasPatronBlocksPermissions &&
+                    <PatronBlock
+                      accordionId="patronBlocksSection"
+                      user={user}
+                      hasPatronBlocks={hasPatronBlocks}
+                      patronBlocks={patronBlocks}
+                      automatedPatronBlocks={automatedPatronBlocks}
+                      expanded={sections.patronBlocksSection}
+                      onToggle={this.handleSectionToggle}
+                      onClickViewPatronBlock={this.onClickViewPatronBlock}
+                      addRecord={this.state.addRecord}
+                      {...this.props}
+                    />
+                  }
+                </IfInterface>
                 <ExtendedInfo
                   accordionId="extendedInfoSection"
                   user={user}
@@ -459,15 +489,24 @@ class UserDetail extends React.Component {
                   defaultServicePointName={defaultServicePointName}
                   defaultDeliveryAddressTypeName={defaultDeliveryAddressTypeName}
                   onToggle={this.handleSectionToggle}
+                  departments={userDepartments}
                 />
                 <ContactInfo
                   accordionId="contactInfoSection"
                   stripes={stripes}
                   user={user}
-                  addresses={addresses}
+                  addresses={addressesList}
                   addressTypes={addressTypes}
                   expanded={sections.contactInfoSection}
                   onToggle={this.handleSectionToggle}
+                />
+                <ViewCustomFieldsRecord
+                  accordionId="customFields"
+                  onToggle={this.handleSectionToggle}
+                  expanded={sections.customFields}
+                  backendModuleName="users"
+                  entityType="user"
+                  customFieldsValues={customFields}
                 />
                 <IfPermission perm="proxiesfor.collection.get">
                   <ProxyPermissions
@@ -480,16 +519,18 @@ class UserDetail extends React.Component {
                     {...this.props}
                   />
                 </IfPermission>
-                <IfPermission perm="ui-users.accounts">
-                  <UserAccounts
-                    expanded={sections.accountsSection}
-                    onToggle={this.handleSectionToggle}
-                    accordionId="accountsSection"
-                    addRecord={addRecord}
-                    location={location}
-                    match={match}
-                  />
-                </IfPermission>
+                <IfInterface name="feesfines">
+                  <IfPermission perm="ui-users.feesfines.actions.all">
+                    <UserAccounts
+                      expanded={sections.accountsSection}
+                      onToggle={this.handleSectionToggle}
+                      accordionId="accountsSection"
+                      addRecord={addRecord}
+                      location={location}
+                      match={match}
+                    />
+                  </IfPermission>
+                </IfInterface>
 
                 <IfPermission perm="ui-users.loans.view">
                   <IfInterface name="loan-policy-storage">
@@ -512,13 +553,15 @@ class UserDetail extends React.Component {
 
                 <IfPermission perm="ui-users.requests.all">
                   <IfInterface name="request-storage" version="2.5 3.0">
-                    <UserRequests
-                      expanded={sections.requestsSection}
-                      onToggle={this.handleSectionToggle}
-                      accordionId="requestsSection"
-                      user={user}
-                      {...this.props}
-                    />
+                    <IfInterface name="circulation">
+                      <UserRequests
+                        expanded={sections.requestsSection}
+                        onToggle={this.handleSectionToggle}
+                        accordionId="requestsSection"
+                        user={user}
+                        {...this.props}
+                      />
+                    </IfInterface>
                   </IfInterface>
                 </IfPermission>
 
@@ -546,25 +589,27 @@ class UserDetail extends React.Component {
                     />
                   </IfInterface>
                 </IfPermission>
-                <IfPermission perm="ui-notes.item.view">
-                  <NotesSmartAccordion
-                    domainName="users"
-                    entityId={match.params.id}
-                    entityName={getFullName(user)}
-                    open={this.state.sections.notesAccordion}
-                    onToggle={this.handleSectionToggle}
-                    id="notesAccordion"
-                    entityType="user"
-                    pathToNoteCreate="/users/notes/new"
-                    pathToNoteDetails="/users/notes"
-                    hideAssignButton
-                  />
-                </IfPermission>
+                <IfInterface name="notes">
+                  <IfPermission perm="ui-notes.item.view">
+                    <NotesSmartAccordion
+                      domainName="users"
+                      entityId={match.params.id}
+                      entityName={getFullName(user)}
+                      open={this.state.sections.notesAccordion}
+                      onToggle={this.handleSectionToggle}
+                      id="notesAccordion"
+                      entityType="user"
+                      pathToNoteCreate="/users/notes/new"
+                      pathToNoteDetails="/users/notes"
+                      hideAssignButton
+                    />
+                  </IfPermission>
+                </IfInterface>
               </AccordionSet>
             </Pane>
-          </HasCommand>
-          { helperApp && <HelperApp appName={helperApp} onClose={this.closeHelperApp} /> }
-        </React.Fragment>
+            { helperApp && <HelperApp appName={helperApp} onClose={this.closeHelperApp} /> }
+          </>
+        </HasCommand>
       );
     }
   }

@@ -27,21 +27,21 @@ class UserAccounts extends React.Component {
       type: 'okapi',
       records: 'accounts',
       GET: {
-        path: 'accounts?query=(userId=:{id})&limit=100',
+        path: 'accounts?query=(userId==:{id})&limit=10000',
       },
     },
     openAccountsCount: {
       type: 'okapi',
       accumulate: 'true',
       GET: {
-        path: 'accounts?query=(userId=:{id} and status.name<>Closed)&limit=100',
+        path: 'accounts?query=(userId==:{id} and status.name<>Closed)&limit=10000',
       },
     },
     closedAccountsCount: {
       type: 'okapi',
       accumulate: 'true',
       GET: {
-        path: 'accounts?query=(userId=:{id} and status.name=Closed)&limit=1',
+        path: 'accounts?query=(userId==:{id} and status.name=Closed)&limit=1',
       },
     },
     activeRecord: {},
@@ -53,6 +53,8 @@ class UserAccounts extends React.Component {
       accountsHistory: PropTypes.shape({
         records: PropTypes.arrayOf(PropTypes.object),
       }),
+      closedAccountsCount: PropTypes.number,
+      openAccountsCount: PropTypes.number,
     }),
     mutator: PropTypes.shape({
       openAccountsCount: PropTypes.object,
@@ -80,9 +82,13 @@ class UserAccounts extends React.Component {
       openAccounts: 0,
       closedAccounts: 0,
     };
+
+    this._isMounted = false;
   }
 
   componentDidMount() {
+    this._isMounted = true;
+
     this.props.mutator.openAccountsCount.GET().then(records => {
       this.setState({
         total: this.getTotalOpenAccounts(records.accounts),
@@ -99,17 +105,25 @@ class UserAccounts extends React.Component {
   componentDidUpdate(prevProps) {
     if (this.props.addRecord !== prevProps.addRecord) {
       this.props.mutator.openAccountsCount.GET().then(records => {
-        this.setState({
-          total: this.getTotalOpenAccounts(records.accounts),
-          openAccounts: records.totalRecords,
-        });
+        if (this._isMounted) {
+          this.setState({
+            total: this.getTotalOpenAccounts(records.accounts),
+            openAccounts: records.totalRecords,
+          });
+        }
       });
       this.props.mutator.closedAccountsCount.GET().then(records => {
-        this.setState({
-          closedAccounts: records.totalRecords,
-        });
+        if (this._isMounted) {
+          this.setState({
+            closedAccounts: records.totalRecords,
+          });
+        }
       });
     }
+  }
+
+  componentWillUnmount() {
+    this._isMounted = false;
   }
 
   getTotalOpenAccounts = (accounts) => {
@@ -136,7 +150,7 @@ class UserAccounts extends React.Component {
         open={expanded}
         id={accordionId}
         onToggle={onToggle}
-        label={<Headline size="large" tag="h3"><FormattedMessage id="ui-users.accounts.title" /></Headline>}
+        label={<Headline size="large" tag="h3"><FormattedMessage id="ui-users.accounts.title.feeFine" /></Headline>}
         displayWhenClosed={displayWhenClosed}
         displayWhenOpen={displayWhenOpen}
       >

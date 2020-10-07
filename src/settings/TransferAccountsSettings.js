@@ -2,12 +2,27 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import {
   injectIntl,
-  intlShape,
+  FormattedMessage,
 } from 'react-intl';
+import {
+  Label,
+} from '@folio/stripes/components';
 import { ControlledVocab } from '@folio/stripes/smart-components';
 import { stripesConnect, withStripes } from '@folio/stripes/core';
 import { validate } from '../components/util';
 import { Owners } from './FeeFinesTable';
+
+const columnMapping = {
+  accountName: (
+    <Label
+      tagName="span"
+      required
+    >
+      <FormattedMessage id="ui-users.transfers.columns.name" />
+    </Label>
+  ),
+  desc: <FormattedMessage id="ui-users.transfers.columns.desc" />,
+};
 
 class TransferAccountsSettings extends React.Component {
   static manifest = Object.freeze({
@@ -23,7 +38,13 @@ class TransferAccountsSettings extends React.Component {
     stripes: PropTypes.shape({
       connect: PropTypes.func.isRequired,
     }).isRequired,
-    intl: intlShape.isRequired,
+    intl: PropTypes.object.isRequired,
+    mutator: PropTypes.shape({
+      owners: PropTypes.shape({
+        GET: PropTypes.func.isRequired,
+        reset: PropTypes.func.isRequired,
+      }),
+    }).isRequired,
   };
 
   constructor(props) {
@@ -68,10 +89,7 @@ class TransferAccountsSettings extends React.Component {
       <this.connectedControlledVocab
         {...this.props}
         baseUrl="transfers"
-        columnMapping={{
-          accountName: formatMessage({ id: 'ui-users.transfers.columns.name' }) + '*',
-          desc: formatMessage({ id: 'ui-users.transfers.columns.desc' })
-        }}
+        columnMapping={columnMapping}
         hiddenFields={['numberOfObjects']}
         id="settings-transfers"
         label={formatMessage({ id: 'ui-users.transfers.label' })}

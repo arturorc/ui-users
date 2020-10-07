@@ -1,5 +1,8 @@
+import isEmpty from 'lodash/isEmpty';
 import React from 'react';
+import PropTypes from 'prop-types';
 import { compose } from 'redux';
+import { concat } from 'lodash';
 import { stripesConnect, withStripes } from '@folio/stripes/core';
 import { LoanDetails } from '../views';
 
@@ -35,14 +38,14 @@ class LoanDetailContainer extends React.Component {
       path: 'groups',
       params: {
         query: 'cql.allRecords=1 sortby group',
-        limit: '40',
+        limit: '200',
       },
       records: 'usergroups',
     },
     loanHistory: {
       type: 'okapi',
       records: 'loans',
-      path: 'circulation/loans?query=(userId=:{id}) sortby id&limit=100',
+      path: 'circulation/loans?query=(userId==:{id}) sortby id&limit=100',
       permissionsRequired: 'circulation.loans.collection.get',
     },
     requests: {
@@ -55,22 +58,21 @@ class LoanDetailContainer extends React.Component {
     },
     loanActions: {
       type: 'okapi',
-      path: 'loan-storage/loan-history?query=(loan.id=:{loanid})&limit=100',
+      path: 'loan-storage/loan-history?query=(loan.id==:{loanid})&limit=100',
       records: 'loansHistory',
       resourceShouldRefresh: true,
-      shouldRefresh: (props, nextProps) => {
-        return (
-          (props.resources.modified.time !== nextProps.resources.modified.time) ||
-          (props.resources.renew.succesfulMutations.length !== nextProps.resources.renew.successfulMutations.length)
-        );
-      }
+      shouldRefresh: (resource, action, refresh) => {
+        const { path } = action.meta;
+
+        return refresh || (path && path.match(/circulation/));
+      },
     },
     loanAccountsActions: {
       type: 'okapi',
       records: 'accounts',
-      path: 'accounts',
-      accumulate: 'true',
-      fetch: false,
+      path: 'accounts?query=(loanId=:{loanid})&limit=1000',
+      resourceShouldRefresh: true,
+      shouldRefresh: (_, action, refresh) => refresh || (action?.meta?.path ?? '').match(/circulation/),
     },
     loanPolicies: {
       type: 'okapi',
@@ -79,11 +81,17 @@ class LoanDetailContainer extends React.Component {
       accumulate: 'true',
       fetch: false,
     },
-    hasPatronBlocks: {
+    hasManualPatronBlocks: {
       type: 'okapi',
       records: 'manualblocks',
-      path: 'manualblocks?query=(userId=:{id})&limit=100',
+      path: 'manualblocks?query=(userId==:{id})&limit=100',
       permissionsRequired: 'manualblocks.collection.get',
+    },
+    hasAutomatedPatronBlocks: {
+      type: 'okapi',
+      records: 'automatedPatronBlocks',
+      path: 'automated-patron-blocks/:{id}?limit=100',
+      permissionsRequired: 'automated-patron-blocks.collection.get',
     },
     renew: {
       fetch: false,
@@ -95,6 +103,34 @@ class LoanDetailContainer extends React.Component {
       throwErrors: false,
     },
   });
+
+  static propTypes = {
+    resources: PropTypes.shape({
+      loanHistory: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      hasManualPatronBlocks: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      hasAutomatedPatronBlocks: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      patronGroups: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      selUser: PropTypes.shape({
+        records: PropTypes.arrayOf(PropTypes.object),
+      }),
+      loanActions: PropTypes.object,
+      users: PropTypes.object,
+    }),
+    match: PropTypes.shape({
+      params: PropTypes.shape({
+        id: PropTypes.string,
+        loanid: PropTypes.string,
+      })
+    }),
+  }
 
   getLoan = () => {
     const { resources, match: { params: { loanid } } } = this.props;
@@ -122,14 +158,23 @@ class LoanDetailContainer extends React.Component {
     return groups.filter(g => g.id === user.patronGroup)[0] || {};
   }
 
+  getPatronBlocks = () => {
+    const { resources } = this.props;
+    const automatedPatronBlocks = resources?.hasAutomatedPatronBlocks?.records ?? [];
+    const manualPatronBlocks = resources?.hasManualPatronBlocks?.records ?? [];
+
+    return concat(automatedPatronBlocks, manualPatronBlocks);
+  }
+
   joinLoanActionsWithUpdatingUser = (loanActions, users) => {
     if ((loanActions && loanActions.records.length > 0) &&
     (users && users.records.length > 0)) {
       const userMap = users.records.reduce((memo, user) => {
         return Object.assign(memo, { [user.id]: user });
       }, {});
-      const records = loanActions.records.map(la => {
-        return Object.assign({}, la.loan, { user: userMap[la.loan.metadata.updatedByUserId] });
+
+      const records = loanActions.records.filter(la => la?.loan?.action).map(la => {
+        return { ...la.loan, user: userMap[la.loan.metadata.updatedByUserId] };
       });
 
       // this.props.mutator.loanActionsWithUser.replace({ records });
@@ -143,14 +188,10 @@ class LoanDetailContainer extends React.Component {
       resources : {
         loanActions,
         users,
-        patronBlocks: resPatronBlocks
       }
     } = this.props;
 
-    const patronBlocks = (resPatronBlocks || {}).records || [];
     const loan = this.getLoan();
-
-
     const loanActionsWithUser = this.joinLoanActionsWithUpdatingUser(
       loanActions,
       users
@@ -158,12 +199,12 @@ class LoanDetailContainer extends React.Component {
 
     return (
       <LoanDetails
-        loans={loan ? [loan] : []}
+        loans={isEmpty(loan) ? [] : [loan]}
         loanActionsWithUser={loanActionsWithUser}
         loan={loan}
         user={this.getUser()}
         patronGroup={this.getPatronGroup()}
-        patronBlocks={patronBlocks}
+        patronBlocks={this.getPatronBlocks()}
         {...this.props}
       />
     );

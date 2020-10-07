@@ -1,5 +1,5 @@
-import _ from 'lodash';
 import React from 'react';
+import _ from 'lodash';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router-dom';
 import {
@@ -15,14 +15,16 @@ import {
   Col,
   KeyValue,
   MultiColumnList,
+  NoValue,
 } from '@folio/stripes/components';
 
-import { Actions } from '../../components/Accounts/Actions';
+import Actions from '../../components/Accounts/Actions/FeeFineActions';
 import {
   getFullName,
   calculateSortParams,
-  nav,
 } from '../../components/util';
+
+import { calculateTotalPaymentAmount } from '../../components/Accounts/accountFunctions';
 
 import css from './AccountDetails.css';
 
@@ -53,6 +55,7 @@ class AccountDetails extends React.Component {
     stripes: PropTypes.object,
     resources: PropTypes.shape({
       accountActions: PropTypes.object,
+      accounts: PropTypes.object.isRequired,
     }),
     mutator: PropTypes.shape({
       activeRecord: PropTypes.shape({
@@ -70,14 +73,22 @@ class AccountDetails extends React.Component {
     history: PropTypes.object,
     match: PropTypes.object,
     patronGroup: PropTypes.object,
-    handleAddRecords: PropTypes.func.isRequired,
+    itemDetails: PropTypes.object,
+    okapi: PropTypes.object,
+    account: PropTypes.object,
+    owedAmount: PropTypes.number,
   };
+
+  static defaultProps = {
+    itemDetails: {},
+    account: {},
+    owedAmount: 0,
+  }
 
   constructor(props) {
     super(props);
     this.onSort = this.onSort.bind(this);
     this.onChangeActions = this.onChangeActions.bind(this);
-    // this.connectedActions = connect(Actions);
     this.error = this.error.bind(this);
     this.comment = this.comment.bind(this);
     this.num = props.num;
@@ -102,6 +113,8 @@ class AccountDetails extends React.Component {
         comment: false,
         regular: false,
         transferModal: false,
+        refundModal: false,
+        refundMany: false,
       },
       sortOrder: ['date', 'date'],
       sortDirection: ['desc', 'desc'],
@@ -112,10 +125,10 @@ class AccountDetails extends React.Component {
 
   static getDerivedStateFromProps(props) {
     const {
-      resources
+      resources,
     } = props;
 
-    const accountActivity = (resources.accountActions || {}).records || [];
+    const accountActivity = _.uniqBy(resources?.accountActions?.records || [], action => action.id);
     const sortData = _.orderBy(accountActivity, ['dateAction'], ['desc']);
     const balance = (sortData[0] || {}).balance;
     let paymentStatus;
@@ -138,9 +151,7 @@ class AccountDetails extends React.Component {
   }
 
   onChangeActions(actions) {
-    this.setState({
-      actions,
-    });
+    this.setState({ actions });
   }
 
   waive = () => {
@@ -163,6 +174,10 @@ class AccountDetails extends React.Component {
     this.onChangeActions({ transferModal: true });
   }
 
+  refund = () => {
+    this.onChangeActions({ refundModal: true });
+  }
+
   onSort(e, meta) {
     if (!this.sortMap[meta.name] || e.target.type === 'button' || e.target.id === 'button') return;
 
@@ -180,6 +195,27 @@ class AccountDetails extends React.Component {
     }));
   }
 
+  getInstanceInfo = () => {
+    const { account } = this.props;
+    const instanceTitle = account?.title;
+    const instanceType = account?.materialType;
+    const instanceTypeString = instanceType ? `(${instanceType})` : '';
+
+    return instanceTitle ? `${instanceTitle} ${instanceTypeString}` : '-';
+  }
+
+  handleClose = () => {
+    const {
+      account,
+      history,
+      match: { params },
+    } = this.props;
+
+    const status = account?.status?.name?.toLowerCase() || 'all';
+
+    history.push({ pathname: `/users/${params.id}/accounts/${status}` });
+  };
+
   render() {
     const {
       sortOrder,
@@ -187,16 +223,16 @@ class AccountDetails extends React.Component {
     } = this.state;
 
     const {
-      handleAddRecords,
+      account,
+      owedAmount,
       patronGroup: patron,
       resources,
-      history,
       stripes,
       match: { params },
       user,
+      itemDetails,
     } = this.props;
 
-    const account = _.get(resources, ['accountHistory', 'records', 0]) || {};
     account.remaining = this.state.remaining;
 
     const columnMapping = {
@@ -228,12 +264,16 @@ class AccountDetails extends React.Component {
       amount: action => (action.amountAction > 0 ? parseFloat(action.amountAction).toFixed(2) : '-'),
       balance: action => (action.balance > 0 ? parseFloat(action.balance).toFixed(2) : '-'),
       transactioninfo: action => action.transactionInformation || '-',
-      created: action => action.createdAt,
+      created: action => {
+        const servicePoint = this.props.okapi.currentUser.servicePoints.find(sp => sp.id === action.createdAt);
+
+        return servicePoint ? servicePoint.name : action.createdAt;
+      },
       source: action => action.source,
       comments: action => (action.comments ? (<div>{action.comments.split('\n').map(c => (<Row><Col>{c}</Col></Row>))}</div>) : ''),
     };
 
-    const isAccountsPending = _.get(resources, ['accountHistory', 'isPending'], true);
+    const isAccountsPending = _.get(resources, ['accounts', 'isPending'], true);
     const isActionsPending = _.get(resources, ['accountActions', 'isPending'], true);
 
     const actions = this.state.data || [];
@@ -244,13 +284,23 @@ class AccountDetails extends React.Component {
     const isAccountId = actions[0] && actions[0].accountId === account.id;
     const buttonDisabled = !this.props.stripes.hasPerm('ui-users.feesfines.actions.all');
 
+    const overdueFinePolicyId = itemDetails?.overdueFinePolicyId;
+    const overdueFinePolicyName = itemDetails?.overdueFinePolicyName;
+    const lostItemPolicyId = itemDetails?.lostItemPolicyId;
+    const lostItemPolicyName = itemDetails?.lostItemPolicyName;
+    const contributors = itemDetails?.contributors.join(', ');
+
+    const totalPaidAmount = calculateTotalPaymentAmount(resources?.accounts?.records);
+    const refundAllowed = totalPaidAmount > 0;
+
     return (
       <Paneset isRoot>
         <Pane
+          data-test-fee-fine-details
           id="pane-account-action-history"
           defaultWidth="100%"
           dismissible
-          onClose={() => { history.goBack(); }}
+          onClose={this.handleClose}
           paneTitle={(
             <FormattedMessage id="ui-users.details.paneTitle.feeFineDetails">
               {(msg) => `${msg} - ${getFullName(user)} (${_.upperFirst(patron.group)}) `}
@@ -268,7 +318,7 @@ class AccountDetails extends React.Component {
                 <FormattedMessage id="ui-users.accounts.history.button.pay" />
               </Button>
               <Button
-                id="waveAccountActionsHistory"
+                id="waiveAccountActionsHistory"
                 disabled={disabled || buttonDisabled || isActionsPending || isAccountsPending}
                 buttonStyle="primary"
                 onClick={this.waive}
@@ -277,8 +327,9 @@ class AccountDetails extends React.Component {
               </Button>
               <Button
                 id="refundAccountActionsHistory"
-                disabled
+                disabled={!refundAllowed || buttonDisabled || isActionsPending || isAccountsPending}
                 buttonStyle="primary"
+                onClick={this.refund}
               >
                 <FormattedMessage id="ui-users.accounts.history.button.refund" />
               </Button>
@@ -347,41 +398,48 @@ class AccountDetails extends React.Component {
                 value={this.state.paymentStatus}
               />
             </Col>
-            <Col xs={1.5}>
-              {(loanId !== '0' && user.id === account.userId) ?
-                <KeyValue
-                  label={<FormattedMessage id="ui-users.details.label.loanDetails" />}
-                  value={(
-                    <button
-                      className={css.btnView}
-                      type="button"
-                      onClick={(e) => {
-                        nav.onClickViewLoanActionsHistory(e, { id: loanId }, history, params);
-                      }}
-                    >
-                      <FormattedMessage id="ui-users.details.field.loan" />
-                    </button>
-                  )}
-                />
-                :
-                <KeyValue
-                  label={<FormattedMessage id="ui-users.details.label.loanDetails" />}
-                  value="-"
-                />
-              }
+            <Col
+              data-test-overdue-policy
+              xs={1.5}
+            >
+              <KeyValue
+                label={<FormattedMessage id="ui-users.loans.details.overduePolicy" />}
+                value={overdueFinePolicyId
+                  ? <Link to={`/settings/circulation/fine-policies/${overdueFinePolicyId}`}>{overdueFinePolicyName}</Link>
+                  : '-'
+                }
+              />
+            </Col>
+            <Col
+              data-test-lost-item-policy
+              xs={1.5}
+            >
+              <KeyValue
+                label={<FormattedMessage id="ui-users.loans.details.lostItemPolicy" />}
+                value={lostItemPolicyId
+                  ? <Link to={`/settings/circulation/lost-item-fee-policy/${lostItemPolicyId}`}>{lostItemPolicyName}</Link>
+                  : '-'
+                }
+              />
             </Col>
           </Row>
           <Row>
-            <Col xs={1.5}>
+            <Col
+              data-test-instance
+              xs={1.5}
+            >
               <KeyValue
-                label={<FormattedMessage id="ui-users.details.field.instance" />}
-                value={_.get(account, ['title'], '-')}
+                label={<FormattedMessage id="ui-users.details.field.instance.type" />}
+                value={this.getInstanceInfo()}
               />
             </Col>
-            <Col xs={1.5}>
+            <Col
+              data-test-contributors
+              xs={1.5}
+            >
               <KeyValue
-                label={<FormattedMessage id="ui-users.details.field.type" />}
-                value={_.get(account, ['materialType'], '-')}
+                label={<FormattedMessage id="ui-users.reports.overdue.item.contributors" />}
+                value={contributors || '-'}
               />
             </Col>
             <Col xs={1.5}>
@@ -390,11 +448,11 @@ class AccountDetails extends React.Component {
                 value={
                   (_.get(account, ['barcode'])) ? (
                     <Link
-                      to={`/inventory/view/${_.get(account, ['itemId'], '')}?query=${_.get(account, ['itemId'], '')}`}
+                      to={`/inventory/view/${_.get(account, ['instanceId'], '')}/${_.get(account, ['holdingsRecordId'], '')}/${_.get(account, ['itemId'], '')}`}
                     >
-                      {_.get(account, ['barcode'])}
+                      {_.get(account, ['barcode'], '')}
                     </Link>
-                  ) : '-'
+                  ) : <NoValue />
                 }
               />
             </Col>
@@ -440,6 +498,25 @@ class AccountDetails extends React.Component {
                 }
               />
             </Col>
+            <Col xs={1.5}>
+              {(loanId !== '0' && user.id === account.userId) ?
+                <KeyValue
+                  label={<FormattedMessage id="ui-users.details.label.loanDetails" />}
+                  value={(
+                    <Link
+                      to={`/users/${params.id}/loans/view/${loanId}`}
+                    >
+                      <FormattedMessage id="ui-users.details.field.loan" />
+                    </Link>
+                  )}
+                />
+                :
+                <KeyValue
+                  label={<FormattedMessage id="ui-users.details.label.loanDetails" />}
+                  value="-"
+                />
+              }
+            </Col>
           </Row>
           <br />
           <MultiColumnList
@@ -460,10 +537,17 @@ class AccountDetails extends React.Component {
             user={user}
             stripes={stripes}
             balance={account.remaining || 0}
+            totalPaidAmount={totalPaidAmount}
+            owedAmount={owedAmount}
             accounts={[account]}
             handleEdit={() => {
-              this.getAccountActions();
-              handleAddRecords();
+              // Neither of the following two functions exists after refactoring
+              // done for v2.26.0. This was causing an error when attempting to
+              // do a fine payment/waiver. But payment/waiving seems to work
+              // perfectly well without them. ¯\_(ツ)_/¯
+              // this.getAccountActions();
+              // handleAddRecords();
+              this.props.mutator.accountActions.GET();
             }}
           />
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
 import { Field } from 'redux-form';
 import {
@@ -10,6 +11,11 @@ import {
 import css from './PasswordControl.css';
 
 class PasswordControl extends React.Component {
+  static propTypes = {
+    isRequired: PropTypes.bool.isRequired,
+    toggleRequired: PropTypes.func.isRequired,
+  };
+
   state = {
     showPassword: false,
   }
@@ -21,8 +27,13 @@ class PasswordControl extends React.Component {
   }
 
   render() {
+    const {
+      isRequired,
+      toggleRequired,
+    } = this.props;
+
     return (
-      <React.Fragment>
+      <>
         <Col xs={12} md={3}>
           <Field
             component={TextField}
@@ -32,6 +43,8 @@ class PasswordControl extends React.Component {
             autoComplete="new-password"
             type={this.state.showPassword ? 'text' : 'password'}
             fullWidth
+            required={isRequired}
+            onChange={toggleRequired}
           />
         </Col>
         <Col xs={12} md={1} className={css.togglePw}>
@@ -42,7 +55,7 @@ class PasswordControl extends React.Component {
             }
           </Button>
         </Col>
-      </React.Fragment>
+      </>
     );
   }
 }
